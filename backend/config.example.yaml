@@ -1,0 +1,13 @@
+server:
+  host: "0.0.0.0"
+  port: 18888
+
+backends:
+  - id: "minimax-main"
+    type: "openai_compatible"
+    base_url: "https://api.minimaxi.com/v1"
+    api_key: "YOUR_API_KEY_HERE"
+    model: "MiniMax-M2.7"
+    temperature: 1.0
+    reasoning_split: true
+    enabled: true

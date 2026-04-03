@@ -1,0 +1,169 @@
+:root {
+  --bg: #f3f3f3;
+  --panel: #f7f7f7;
+  --text: #111111;
+  --muted: #6c6c6c;
+  --border: #d6d6d6;
+  --assistant: #ffffff;
+  --user: #e9e9e9;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: var(--text);
+  background: radial-gradient(circle at 20% 20%, #fbfbfb 0, #f2f2f2 45%, #ececec 100%);
+}
+
+.page {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 24px 14px;
+}
+
+.panel {
+  width: min(760px, 100%);
+}
+
+.logo {
+  margin: 14px 0 24px;
+  text-align: center;
+  font-size: clamp(48px, 9vw, 68px);
+  letter-spacing: 2px;
+  line-height: 1;
+  font-family: "Agent YaHei", "Microsoft YaHei", sans-serif;
+  font-weight: 700;
+}
+
+.chat-area {
+  min-height: 48vh;
+  max-height: 62vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 2px 16px;
+}
+
+.msg {
+  display: flex;
+}
+
+.msg-user {
+  justify-content: flex-end;
+}
+
+.msg-assistant {
+  justify-content: flex-start;
+}
+
+.bubble {
+  max-width: min(92%, 680px);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 12px 14px;
+  line-height: 1.65;
+  font-size: 14px;
+  white-space: pre-wrap;
+}
+
+.user-bubble {
+  background: var(--user);
+}
+
+.assistant-bubble {
+  background: var(--assistant);
+}
+
+.label {
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.reasoning {
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+  border-bottom: 1px dashed #d4d4d4;
+}
+
+.composer {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  padding: 14px 54px 16px 16px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+}
+
+.input {
+  width: 100%;
+  border: none;
+  resize: none;
+  background: transparent;
+  outline: none;
+  font-size: 18px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.input::placeholder {
+  color: #7f7f7f;
+}
+
+.send {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: #d8d8d8;
+  color: #4b4b4b;
+  cursor: pointer;
+  font-size: 18px;
+}
+
+.send:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.meta {
+  margin-top: 8px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: 12px;
+  }
+
+  .logo {
+    margin-top: 8px;
+    margin-bottom: 14px;
+    font-size: clamp(42px, 14vw, 58px);
+  }
+
+  .chat-area {
+    min-height: 52vh;
+    max-height: 60vh;
+  }
+
+  .input {
+    font-size: 16px;
+  }
+}
