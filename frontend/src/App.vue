@@ -107,6 +107,14 @@ const selectedBackendId = ref('')
 const textareaRef = ref(null)
 const expandedThinking = reactive(new Map())
 
+// 对话持久化
+const conversations = ref([])
+const currentConversationId = ref(null)
+const sidebarOpen = ref(true)
+
+const STORAGE_KEY_CONVERSATIONS = 'agent-chat-conversations'
+const STORAGE_KEY_SIDEBAR = 'agent-chat-sidebar-open'
+
 // 实时计时器
 const now = ref(Date.now())
 let timerInterval = null
@@ -123,7 +131,202 @@ function stopTimer() {
   }
 }
 
-onUnmounted(() => { stopTimer() })
+onUnmounted(() => {
+  stopTimer()
+  document.removeEventListener('keydown', handleKeydown)
+})
+
+// ===== 对话持久化 =====
+
+function loadConversations() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_CONVERSATIONS)
+    if (raw) conversations.value = JSON.parse(raw)
+  } catch {
+    conversations.value = []
+  }
+}
+
+function saveConversations() {
+  try {
+    localStorage.setItem(STORAGE_KEY_CONVERSATIONS, JSON.stringify(conversations.value))
+  } catch {
+    // localStorage 可能已满
+  }
+}
+
+function loadSidebarState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_SIDEBAR)
+    if (raw !== null) sidebarOpen.value = JSON.parse(raw)
+  } catch {
+    sidebarOpen.value = true
+  }
+}
+
+function saveSidebarState() {
+  try {
+    localStorage.setItem(STORAGE_KEY_SIDEBAR, JSON.stringify(sidebarOpen.value))
+  } catch {
+    // 忽略
+  }
+}
+
+function generateId() {
+  return `conv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function extractTitle(msgs) {
+  const first = msgs.find(m => m.role === 'user')
+  if (!first) return '新对话'
+  const text = first.content.trim().replace(/\n/g, ' ')
+  return text.length > 30 ? text.slice(0, 30) + '...' : text
+}
+
+function createNewConversation() {
+  // 如果当前对话仍为空, 直接复用, 不再创建
+  const current = conversations.value.find(c => c.id === currentConversationId.value)
+  if (current && current.messages.length === 0) return
+  // 先保存当前对话
+  saveCurrentMessages()
+  const conv = {
+    id: generateId(),
+    title: '新对话',
+    messages: [],
+    createdAt: Date.now()
+  }
+  conversations.value.unshift(conv)
+  currentConversationId.value = conv.id
+  messages.value = []
+  expandedThinking.clear()
+  saveConversations()
+}
+
+function switchConversation(id) {
+  if (id === currentConversationId.value) return
+  saveCurrentMessages()
+  currentConversationId.value = id
+  const conv = conversations.value.find(c => c.id === id)
+  if (conv) {
+    messages.value = conv.messages.map(m => {
+      if (m.role === 'assistant') {
+        return reactive({ ...m, thinkingStartTime: null })
+      }
+      return { ...m }
+    })
+    expandedThinking.clear()
+  }
+}
+
+function saveCurrentMessages() {
+  if (!currentConversationId.value) return
+  const conv = conversations.value.find(c => c.id === currentConversationId.value)
+  if (!conv) return
+  conv.messages = messages.value.map(m => ({
+    role: m.role,
+    content: m.content,
+    reasoning: m.reasoning || '',
+    reasoningDone: m.reasoningDone || false,
+    thinkingDuration: m.thinkingDuration || null
+  }))
+  // 标题仍为默认值时先用首条消息做临时标题
+  if (conv.title === '新对话' || !conv.title) {
+    conv.title = extractTitle(conv.messages)
+  }
+  saveConversations()
+}
+
+// 异步调用后端模型生成对话标题
+async function generateTitleAsync(convId) {
+  const conv = conversations.value.find(c => c.id === convId)
+  if (!conv) return
+  // 只在标题仍是临时标题时才生成
+  if (conv.title !== extractTitle(conv.messages)) return
+  // 至少需要一条用户消息
+  if (!conv.messages.some(m => m.role === 'user')) return
+
+  try {
+    const titleMessages = [
+      {
+        role: 'system',
+        content: '你是一个标题生成器. 请根据用户的消息内容, 用中文生成一个简短的对话标题 (不超过20个字). 只输出标题文本, 不要加引号, 不要加句号, 不要加任何额外说明.'
+      },
+      {
+        role: 'user',
+        content: conv.messages
+          .filter(m => m.role === 'user')
+          .slice(0, 2)
+          .map(m => m.content)
+          .join('\n')
+      }
+    ]
+
+    const res = await fetch(`${apiBase}/api/chat/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        backend_id: selectedBackendId.value || undefined,
+        messages: titleMessages
+      })
+    })
+
+    if (!res.ok || !res.body) return
+
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder('utf-8')
+    let buffer = ''
+    let title = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+
+      while (true) {
+        const { block, rest } = takeNextSSEBlock(buffer)
+        if (block === null) { buffer = rest; break }
+        buffer = rest
+        const { event, payload } = parseSSEBlock(block)
+        if (!payload) continue
+        if (event === 'content') {
+          title += payload.delta || ''
+        }
+        if (event === 'done' || event === 'error') {
+          await reader.cancel()
+          break
+        }
+      }
+    }
+
+    title = title.trim().replace(/^["""']|["""']$/g, '').replace(/\n/g, ' ')
+    if (title && title.length > 0 && title.length <= 50) {
+      // 再次确认对话仍存在且标题没被用户手动改过
+      const target = conversations.value.find(c => c.id === convId)
+      if (target) {
+        target.title = title
+        saveConversations()
+      }
+    }
+  } catch {
+    // 标题生成失败不影响主流程
+  }
+}
+
+function toggleSidebar() {
+  sidebarOpen.value = !sidebarOpen.value
+  saveSidebarState()
+}
+
+const sortedConversations = computed(() => {
+  return [...conversations.value].sort((a, b) => b.createdAt - a.createdAt)
+})
+
+function handleKeydown(e) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+    e.preventDefault()
+    createNewConversation()
+  }
+}
 
 function formatDuration(ms) {
   const totalSeconds = ms / 1000
@@ -146,6 +349,17 @@ function getThinkingDuration(msg) {
 }
 
 const canSend = computed(() => input.value.trim() !== '' && !loading.value)
+const isLoading = computed(() => loading.value)
+
+// 用于中断流式请求的 AbortController
+let streamController = null
+
+function stopGeneration() {
+  if (streamController) {
+    streamController.abort()
+    streamController = null
+  }
+}
 
 function autoResize() {
   const el = textareaRef.value
@@ -165,6 +379,26 @@ function isThinkingExpanded(idx) {
 }
 
 onMounted(async () => {
+  // 加载持久化状态
+  loadSidebarState()
+  loadConversations()
+  document.addEventListener('keydown', handleKeydown)
+
+  // 如果没有对话, 创建一个
+  if (conversations.value.length === 0) {
+    createNewConversation()
+  } else {
+    const latest = sortedConversations.value[0]
+    currentConversationId.value = latest.id
+    messages.value = latest.messages.map(m => {
+      if (m.role === 'assistant') {
+        return reactive({ ...m, thinkingStartTime: null })
+      }
+      return { ...m }
+    })
+  }
+
+  // 加载后端列表
   try {
     const res = await fetch(`${apiBase}/api/backends`)
     if (!res.ok) return
@@ -255,6 +489,11 @@ async function copyCode(event) {
 }
 
 async function sendMessage() {
+  // 正在输出时点击 = 中断
+  if (loading.value) {
+    stopGeneration()
+    return
+  }
   if (!canSend.value) return
 
   const userText = input.value.trim()
@@ -263,6 +502,9 @@ async function sendMessage() {
   if (textareaRef.value) textareaRef.value.style.height = 'auto'
 
   messages.value.push({ role: 'user', content: userText })
+  // 保存后立即异步生成标题
+  saveCurrentMessages()
+  generateTitleAsync(currentConversationId.value)
   const assistant = reactive({
     role: 'assistant',
     reasoning: '',
@@ -278,6 +520,7 @@ async function sendMessage() {
 
   loading.value = true
   startTimer()
+  streamController = new AbortController()
 
   try {
     const res = await fetch(`${apiBase}/api/chat/stream`, {
@@ -286,7 +529,8 @@ async function sendMessage() {
       body: JSON.stringify({
         backend_id: selectedBackendId.value || undefined,
         messages: toChatMessages()
-      })
+      }),
+      signal: streamController.signal
     })
 
     if (!res.ok || !res.body) {
@@ -355,66 +599,170 @@ async function sendMessage() {
   } finally {
     stopTimer()
     loading.value = false
+    streamController = null
     await scrollToBottom()
+    saveCurrentMessages()
   }
 }
 </script>
 
 <template>
-  <div class="page">
-    <div class="panel">
-      <div class="chat-area">
-        <div v-for="(msg, idx) in messages" :key="idx" class="msg" :class="`msg-${msg.role}`">
-          <template v-if="msg.role === 'user'">
-            <div class="user-bubble markdown-body" v-html="renderMarkdown(msg.content)"></div>
-          </template>
-          <template v-else>
-            <div class="assistant-message">
-              <!-- 思考块: 可折叠, 实时计时 -->
-              <div v-if="msg.reasoning" class="thinking-block">
-                <button class="thinking-toggle" @click="toggleThinking(idx)">
-                  <span class="thinking-chevron" :class="{ expanded: isThinkingExpanded(idx) }">&#9654;</span>
-                  <span class="thinking-label">
-                    Thought for {{ getThinkingDuration(msg) }}
-                  </span>
-                </button>
-                <div v-show="isThinkingExpanded(idx)" class="thinking-content markdown-body" v-html="renderMarkdown(msg.reasoning)"></div>
-              </div>
-              <!-- 回答内容: 思考完成后才显示 -->
-              <div
-                v-if="msg.reasoningDone || !msg.reasoning"
-                class="markdown-body"
-                v-html="renderMarkdown(msg.content)"
-                @click="copyCode"
-              ></div>
+  <div class="app-layout">
+    <!-- 侧边栏 -->
+    <aside class="sidebar" :class="{ 'sidebar-collapsed': !sidebarOpen }">
+      <div class="sidebar-header">
+        <img src="/logo.png" alt="Logo" class="sidebar-logo" />
+        <button class="sidebar-toggle" @click="toggleSidebar" title="收起侧边栏">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <rect x="1" y="2" width="5" height="14" rx="1" stroke="currentColor" stroke-width="1.5"/>
+            <rect x="8" y="2" width="9" height="14" rx="1" stroke="currentColor" stroke-width="1.5"/>
+          </svg>
+        </button>
+      </div>
+
+      <button class="new-chat-btn" @click="createNewConversation">
+        <svg class="plus-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/>
+          <line x1="8" y1="4.5" x2="8" y2="11.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="4.5" y1="8" x2="11.5" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <span class="new-chat-text">新对话</span>
+        <span class="shortcut-hint">Ctrl K</span>
+      </button>
+
+      <div class="sidebar-history">
+        <div class="history-header">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.2"/>
+            <path d="M7 4v3.5l2.5 1.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+          </svg>
+          <span>历史会话</span>
+        </div>
+        <div class="history-list">
+          <button
+            v-for="conv in sortedConversations"
+            :key="conv.id"
+            class="history-item"
+            :class="{ active: conv.id === currentConversationId }"
+            @click="switchConversation(conv.id)"
+          >
+            <span class="history-title">{{ conv.title }}</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="user-profile">
+          <img src="/avatar.png" alt="Avatar" class="user-avatar" />
+          <div class="user-info">
+            <span class="username">TaterLi</span>
+            <span class="plan-badge">Plus</span>
+          </div>
+          <svg class="chevron-down" width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M3.5 5.25L7 8.75L10.5 5.25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 主内容区域 -->
+    <div class="main-area">
+      <div class="page">
+        <div class="panel">
+          <!-- 空状态 -->
+          <div v-if="messages.length === 0" class="empty-state">
+            <h2>有什么可以帮你的?</h2>
+          </div>
+          <!-- 聊天区域 -->
+          <div v-else class="chat-area">
+            <div v-for="(msg, idx) in messages" :key="idx" class="msg" :class="`msg-${msg.role}`">
+              <template v-if="msg.role === 'user'">
+                <div class="user-bubble markdown-body" v-html="renderMarkdown(msg.content)"></div>
+              </template>
+              <template v-else>
+                <div class="assistant-message">
+                  <!-- 思考块: 可折叠, 实时计时 -->
+                  <div v-if="msg.reasoning" class="thinking-block">
+                    <button class="thinking-toggle" @click="toggleThinking(idx)">
+                      <span class="thinking-chevron" :class="{ expanded: isThinkingExpanded(idx) }">&#9654;</span>
+                      <span class="thinking-label">
+                        Thought for {{ getThinkingDuration(msg) }}
+                      </span>
+                    </button>
+                    <div v-show="isThinkingExpanded(idx)" class="thinking-content markdown-body" v-html="renderMarkdown(msg.reasoning)"></div>
+                  </div>
+                  <!-- 回答内容: 思考完成后才显示 -->
+                  <div
+                    v-if="msg.reasoningDone || !msg.reasoning"
+                    class="markdown-body"
+                    v-html="renderMarkdown(msg.content)"
+                    @click="copyCode"
+                  ></div>
+                </div>
+              </template>
             </div>
-          </template>
+          </div>
+        </div>
+      </div>
+
+      <!-- 底部输入栏 -->
+      <div class="bottom-bar">
+        <div class="panel">
+          <div class="composer">
+            <textarea
+              ref="textareaRef"
+              v-model="input"
+              class="input"
+              placeholder="尽管问..."
+              rows="1"
+              :disabled="loading"
+              @input="autoResize"
+              @keydown.enter.exact.prevent="sendMessage"
+            />
+            <div class="send-wrapper">
+              <div v-if="!input.trim() && !loading" class="send-tooltip">请输入你的问题</div>
+              <button
+                class="send"
+                :class="{
+                  'send-active': input.trim() && !loading,
+                  'send-loading': loading
+                }"
+                :disabled="!input.trim() && !loading"
+                @click="sendMessage"
+              >
+                <!-- 空状态: 暗淡箭头 -->
+                <svg v-if="!input.trim() && !loading" width="18" height="18" viewBox="0 0 18 18" fill="none">
+                  <path d="M9 14V4M9 4L4.5 8.5M9 4L13.5 8.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <!-- 有输入: 点亮箭头 -->
+                <svg v-else-if="input.trim() && !loading" width="18" height="18" viewBox="0 0 18 18" fill="none">
+                  <path d="M9 14V4M9 4L4.5 8.5M9 4L13.5 8.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <!-- 加载中: 停止图标 -->
+                <svg v-else width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                  <rect x="2" y="2" width="10" height="10" rx="2"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="meta">
+            后端: {{ selectedBackendId || '未连接' }} | API: {{ apiBase }}
+          </div>
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- 固定底部输入栏 -->
-  <div class="bottom-bar">
-    <div class="panel">
-      <div class="composer">
-        <textarea
-          ref="textareaRef"
-          v-model="input"
-          class="input"
-          placeholder="尽管问..."
-          rows="1"
-          :disabled="loading"
-          @input="autoResize"
-          @keydown.enter.exact.prevent="sendMessage"
-        />
-        <button class="send" :disabled="!canSend" @click="sendMessage">
-          {{ loading ? '...' : '↑' }}
-        </button>
-      </div>
-      <div class="meta">
-        后端: {{ selectedBackendId || '未连接' }} | API: {{ apiBase }}
-      </div>
-    </div>
+    <!-- 侧边栏折叠后的展开按钮 -->
+    <button
+      v-if="!sidebarOpen"
+      class="sidebar-open-btn"
+      @click="toggleSidebar"
+      title="展开侧边栏"
+    >
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+        <rect x="1" y="2" width="5" height="14" rx="1" stroke="currentColor" stroke-width="1.5"/>
+        <rect x="8" y="2" width="9" height="14" rx="1" stroke="currentColor" stroke-width="1.5"/>
+      </svg>
+    </button>
   </div>
 </template>
