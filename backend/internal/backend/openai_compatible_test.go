@@ -1,6 +1,10 @@
 package backend
 
-import "testing"
+import (
+	"net/http"
+	"testing"
+	"time"
+)
 
 func TestNormalizeDelta_Cumulative(t *testing.T) {
 	prev := ""
@@ -79,5 +83,25 @@ func TestDecodeThinkTagEscapes(t *testing.T) {
 	got := decodeThinkTagEscapes(`\\u003cthink\\u003eabc\\u003c/think\\u003exyz`)
 	if got != "<think>abc</think>xyz" {
 		t.Fatalf("unexpected decode result: %q", got)
+	}
+}
+
+func TestParseUpstreamError_Overloaded(t *testing.T) {
+	headers := http.Header{}
+	info := parseUpstreamError(529, headers, []byte(`{"type":"error","error":{"type":"overloaded_error","message":"当前服务集群负载较高"},"request_id":"req_1"}`))
+	if !info.Busy || !info.Retryable {
+		t.Fatalf("expected busy retryable, got busy=%v retryable=%v", info.Busy, info.Retryable)
+	}
+	if info.RequestID != "req_1" {
+		t.Fatalf("unexpected request id: %s", info.RequestID)
+	}
+}
+
+func TestComputeRetryDelay_RespectRetryAfter(t *testing.T) {
+	headers := http.Header{}
+	headers.Set("Retry-After", "3")
+	d := computeRetryDelay(0, headers)
+	if d != 3*time.Second {
+		t.Fatalf("expected 3s, got %v", d)
 	}
 }

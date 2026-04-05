@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"taterli-agent-chat/backend/internal/backend"
+	"taterli-agent-chat/backend/internal/mcpserver"
 )
 
 type Server struct {
@@ -54,6 +55,10 @@ func (s *Server) mountRoutes() {
 	})
 
 	s.r.POST("/api/chat/stream", s.handleStreamChat)
+
+	mcpHandler := gin.WrapH(mcpserver.NewHTTPHandler())
+	s.r.Any("/api/mcp", mcpHandler)
+	s.r.Any("/api/mcp/*path", mcpHandler)
 }
 
 func (s *Server) Run() error {

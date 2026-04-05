@@ -511,7 +511,8 @@ async function sendMessage() {
     content: '',
     thinkingDuration: null,
     thinkingStartTime: Date.now(),
-    reasoningDone: false
+    reasoningDone: false,
+    retrying: null // { attempt, max_attempts, delay_seconds }
   })
   messages.value.push(assistant)
   // 新消息时总是滚到底部 (用户刚发送)
@@ -567,6 +568,16 @@ async function sendMessage() {
         if (event === 'content') {
           assistant.reasoningDone = true
           assistant.content += payload.delta || ''
+          assistant.retrying = null
+          await scrollToBottom()
+        }
+
+        if (event === 'retrying') {
+          assistant.retrying = {
+            attempt: payload.attempt,
+            maxAttempts: payload.max_attempts,
+            delaySeconds: payload.delay_seconds
+          }
           await scrollToBottom()
         }
 
@@ -604,6 +615,7 @@ async function sendMessage() {
     saveCurrentMessages()
   }
 }
+
 </script>
 
 <template>
@@ -681,6 +693,11 @@ async function sendMessage() {
               </template>
               <template v-else>
                 <div class="assistant-message">
+                  <!-- 排队重试提示 -->
+                  <div v-if="msg.retrying" class="retrying-indicator">
+                    <span class="retrying-spinner"></span>
+                    <span>服务繁忙,正在排队重试 ({{ msg.retrying.attempt }}/{{ msg.retrying.maxAttempts }})...</span>
+                  </div>
                   <!-- 思考块: 可折叠, 实时计时 -->
                   <div v-if="msg.reasoning" class="thinking-block">
                     <button class="thinking-toggle" @click="toggleThinking(idx)">

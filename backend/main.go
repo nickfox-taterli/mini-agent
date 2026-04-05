@@ -2,7 +2,10 @@ package main
 
 import (
 	"flag"
+	"io"
 	"log"
+	"os"
+	"path/filepath"
 
 	"taterli-agent-chat/backend/internal/backend"
 	"taterli-agent-chat/backend/internal/config"
@@ -12,6 +15,11 @@ import (
 func main() {
 	configPath := flag.String("config", "config.yaml", "path to config file")
 	flag.Parse()
+
+	logPath, err := initLogger()
+	if err != nil {
+		log.Fatalf("init logger: %v", err)
+	}
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
@@ -24,8 +32,23 @@ func main() {
 	}
 
 	srv := server.New(manager, cfg.Server.Host, cfg.Server.Port)
-	log.Printf("backend listening on http://%s:%d", cfg.Server.Host, cfg.Server.Port)
+	log.Printf("backend listening on http://%s:%d, log_file=%s", cfg.Server.Host, cfg.Server.Port, logPath)
 	if err := srv.Run(); err != nil {
 		log.Fatalf("run server: %v", err)
 	}
+}
+
+func initLogger() (string, error) {
+	logDir := "logs"
+	if err := os.MkdirAll(logDir, 0o755); err != nil {
+		return "", err
+	}
+	logPath := filepath.Join(logDir, "backend.log")
+	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return "", err
+	}
+	log.SetOutput(io.MultiWriter(os.Stdout, f))
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+	return logPath, nil
 }

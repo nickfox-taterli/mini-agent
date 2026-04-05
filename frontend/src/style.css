@@ -553,6 +553,45 @@ html {
 
 /* ===== Thinking Block ===== */
 
+/* ===== Retrying Indicator ===== */
+
+.retrying-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  border-left: 3px solid #FFA726;
+  border-radius: 0 6px 6px 0;
+  background: var(--bg-tertiary);
+  color: #FFA726;
+  font-size: 13px;
+  font-weight: 500;
+  animation: retryingPulse 2s ease-in-out infinite;
+}
+
+@keyframes retryingPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.retrying-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 167, 38, 0.3);
+  border-top-color: #FFA726;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ===== Thinking Block ===== */
+
 .thinking-block {
   margin-bottom: 12px;
   border-left: 3px solid var(--accent-dim);

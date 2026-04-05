@@ -117,7 +117,7 @@ func TestStreamChat_UpstreamError(t *testing.T) {
 	if !strings.Contains(respBody, `event: error`) {
 		t.Fatalf("missing error event: %s", respBody)
 	}
-	if !strings.Contains(respBody, `upstream status 401`) {
+	if !strings.Contains(respBody, `status=401`) {
 		t.Fatalf("missing upstream error details: %s", respBody)
 	}
 }
