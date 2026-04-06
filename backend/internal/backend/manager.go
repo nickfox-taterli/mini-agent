@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"taterli-agent-chat/backend/internal/config"
+	"taterli-agent-chat/backend/internal/skills"
 )
 
 type Manager struct {
@@ -17,6 +18,12 @@ func NewManager(cfg *config.Config) (*Manager, error) {
 		adapters: make(map[string]Adapter),
 	}
 
+	loadedSkills, err := skills.Load("skills")
+	if err != nil {
+		return nil, fmt.Errorf("load skills: %w", err)
+	}
+	skillSystemPrompt := skills.BuildSystemPrompt(loadedSkills)
+
 	for _, b := range cfg.Backends {
 		summary := BackendSummary{ID: b.ID, Type: b.Type, Model: b.Model, Enabled: b.Enabled}
 		m.summaries = append(m.summaries, summary)
@@ -27,7 +34,7 @@ func NewManager(cfg *config.Config) (*Manager, error) {
 		var adapter Adapter
 		switch b.Type {
 		case "openai_compatible":
-			adapter = NewOpenAICompatibleAdapter(b)
+			adapter = NewOpenAICompatibleAdapter(b, skillSystemPrompt)
 		default:
 			return nil, fmt.Errorf("unsupported backend type: %s", b.Type)
 		}

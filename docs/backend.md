@@ -5,8 +5,15 @@
 - `main.go`: 启动入口
 - `internal/config`: 配置结构与校验
 - `internal/backend`: 后端抽象,管理器,OpenAI 兼容适配器
+- `internal/skills`: 本地 Skill 扫描与系统提示词构建
 - `internal/server`: HTTP 路由和 SSE 输出
 - `tests`: 集成测试
+
+## Skills 目录
+
+- 后端 Skill 根目录: `backend/skills`
+- 每个 skill 以子目录存在,例如: `backend/skills/minimax-xlsx`
+- 启动时会读取每个 skill 的 `SKILL.md` 中 `name/description`,并注入到模型系统提示词,让模型可感知可用 skill
 
 ## 配置文件
 
@@ -27,6 +34,7 @@
 - `model`
 - `temperature`
 - `reasoning_split`
+- `tool_max_rounds` (可选, 默认 `16`, 控制单次请求允许的工具调用轮次上限)
 - `enabled`
 
 ## 多后端实现方式

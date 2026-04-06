@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"taterli-agent-chat/backend/internal/backend"
@@ -73,5 +75,134 @@ func TestMCPGetSystemTime(t *testing.T) {
 	}
 	if _, ok := structured["timezone_name"]; !ok {
 		t.Fatalf("missing timezone_name: %v", structured)
+	}
+}
+
+func TestMCPWriteFrontendTempFile(t *testing.T) {
+	cfg := &config.Config{
+		Server: config.ServerConfig{Host: "127.0.0.1", Port: 18888},
+		Backends: []config.BackendConfig{{
+			ID:      "mock-main",
+			Type:    "openai_compatible",
+			BaseURL: "http://127.0.0.1:1",
+			APIKey:  "test",
+			Model:   "mock",
+			Enabled: true,
+		}},
+	}
+	manager, err := backend.NewManager(cfg)
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+	srv := server.New(manager, "127.0.0.1", 18888)
+
+	fileName := "tests/mcp-write.txt"
+	body := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "write_frontend_temp_file",
+			"arguments": map[string]any{
+				"file_name":    fileName,
+				"text_content": "hello-from-mcp",
+				"overwrite":    true,
+			},
+		},
+	}
+	payload, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/mcp", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	w := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d, body=%s", w.Code, w.Body.String())
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v, body=%s", err, w.Body.String())
+	}
+	result, _ := resp["result"].(map[string]any)
+	structured, _ := result["structuredContent"].(map[string]any)
+	targetPath, _ := structured["path"].(string)
+	if targetPath == "" {
+		t.Fatalf("missing output path in response: %v", structured)
+	}
+	defer os.Remove(targetPath)
+
+	content, err := os.ReadFile(targetPath)
+	if err != nil {
+		t.Fatalf("read written file: %v", err)
+	}
+	if string(content) != "hello-from-mcp" {
+		t.Fatalf("unexpected file content: %s", string(content))
+	}
+}
+
+func TestMCPRunSkillBash(t *testing.T) {
+	cfg := &config.Config{
+		Server: config.ServerConfig{Host: "127.0.0.1", Port: 18888},
+		Backends: []config.BackendConfig{{
+			ID:      "mock-main",
+			Type:    "openai_compatible",
+			BaseURL: "http://127.0.0.1:1",
+			APIKey:  "test",
+			Model:   "mock",
+			Enabled: true,
+		}},
+	}
+	manager, err := backend.NewManager(cfg)
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+	srv := server.New(manager, "127.0.0.1", 18888)
+
+	fileName := "tests/skill-bash.txt"
+	body := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "run_skill_bash",
+			"arguments": map[string]any{
+				"skill_name":      "minimax-xlsx",
+				"timeout_seconds": 30,
+				"command":         "printf 'ok-from-skill-bash' > \"$FRONTEND_TMP_DIR/" + fileName + "\"",
+			},
+		},
+	}
+	payload, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/mcp", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	w := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d, body=%s", w.Code, w.Body.String())
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v, body=%s", err, w.Body.String())
+	}
+	result, _ := resp["result"].(map[string]any)
+	structured, _ := result["structuredContent"].(map[string]any)
+	frontendTmpDir, _ := structured["frontend_tmp_dir"].(string)
+	if frontendTmpDir == "" {
+		t.Fatalf("missing frontend_tmp_dir in response: %v", structured)
+	}
+	targetPath := filepath.Join(frontendTmpDir, fileName)
+	defer os.Remove(targetPath)
+
+	content, err := os.ReadFile(targetPath)
+	if err != nil {
+		t.Fatalf("read written file: %v", err)
+	}
+	if string(content) != "ok-from-skill-bash" {
+		t.Fatalf("unexpected file content: %s", string(content))
 	}
 }

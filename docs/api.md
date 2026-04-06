@@ -127,6 +127,9 @@ SSE 事件:
 用途: MCP Streamable HTTP 入口. 当前内置工具:
 
 - `get_system_time`: 获取系统时间.
+- `write_frontend_temp_file`: 把文本或 Base64 二进制内容写入 `frontend/tmp` 目录.
+- `minimax-xlsx`: 直接生成真实 `.xlsx` 文件到 `frontend/tmp`.
+- `run_skill_bash`: 在 `backend/skills/<skill_name>` 中执行 Bash 命令,用于通用 skill 执行.
 
 前端调用示例(调用工具):
 
@@ -150,5 +153,23 @@ SSE 事件:
   "now_rfc3339": "2026-04-14T14:00:00+08:00",
   "now_local": "2026-04-14 14:00:00",
   "timezone_name": "Asia/Shanghai"
+}
+```
+
+写文件工具调用示例:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "write-temp-file",
+  "method": "tools/call",
+  "params": {
+    "name": "write_frontend_temp_file",
+    "arguments": {
+      "file_name": "demo/hello.txt",
+      "text_content": "hello from tool",
+      "overwrite": true
+    }
+  }
 }
 ```

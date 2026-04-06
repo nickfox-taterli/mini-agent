@@ -25,6 +25,7 @@ type BackendConfig struct {
 	Model          string  `yaml:"model"`
 	Temperature    float64 `yaml:"temperature"`
 	ReasoningSplit bool    `yaml:"reasoning_split"`
+	ToolMaxRounds  int     `yaml:"tool_max_rounds"`
 	Enabled        bool    `yaml:"enabled"`
 }
 
@@ -67,6 +68,9 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("duplicate backend id: %s", b.ID)
 		}
 		seen[b.ID] = struct{}{}
+		if b.ToolMaxRounds < 0 {
+			return fmt.Errorf("backend %s tool_max_rounds must be >= 0", b.ID)
+		}
 		if b.Enabled {
 			enabledCount++
 		}

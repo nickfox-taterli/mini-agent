@@ -20,23 +20,25 @@ import (
 )
 
 const (
-	maxRetries             = 4
+	maxRetries             = 30
 	baseRetryDelay         = 1500 * time.Millisecond
-	maxRetryDelay          = 12 * time.Second
-	maxToolRounds          = 3
+	maxRetryDelay          = 8 * time.Second
+	defaultToolMaxRounds   = 16
 	upstreamConcurrencyCap = 2
 )
 
 var upstreamSlots = make(chan struct{}, upstreamConcurrencyCap)
 
 type OpenAICompatibleAdapter struct {
-	cfg        config.BackendConfig
-	httpClient *http.Client
+	cfg               config.BackendConfig
+	httpClient        *http.Client
+	skillSystemPrompt string
 }
 
-func NewOpenAICompatibleAdapter(cfg config.BackendConfig) *OpenAICompatibleAdapter {
+func NewOpenAICompatibleAdapter(cfg config.BackendConfig, skillSystemPrompt string) *OpenAICompatibleAdapter {
 	return &OpenAICompatibleAdapter{
-		cfg: cfg,
+		cfg:               cfg,
+		skillSystemPrompt: strings.TrimSpace(skillSystemPrompt),
 		httpClient: &http.Client{
 			Timeout: 10 * time.Minute,
 		},
@@ -169,8 +171,13 @@ type upstreamErrorInfo struct {
 
 func (a *OpenAICompatibleAdapter) StreamChat(ctx context.Context, req StreamRequest, emit EmitFunc) error {
 	traceID := newTraceID()
-	workingMessages := append([]Message(nil), req.Messages...)
+	workingMessages := a.withSkillSystemPrompt(req.Messages)
 	log.Printf("[trace=%s] backend=%s stream start messages=%d", traceID, a.cfg.ID, len(workingMessages))
+
+	maxToolRounds := a.cfg.ToolMaxRounds
+	if maxToolRounds <= 0 {
+		maxToolRounds = defaultToolMaxRounds
+	}
 
 	for round := 0; round <= maxToolRounds; round++ {
 		payload := openAIStreamReq{
@@ -235,6 +242,19 @@ func (a *OpenAICompatibleAdapter) StreamChat(ctx context.Context, req StreamRequ
 	}
 
 	return nil
+}
+
+func (a *OpenAICompatibleAdapter) withSkillSystemPrompt(messages []Message) []Message {
+	working := append([]Message(nil), messages...)
+	if a.skillSystemPrompt == "" {
+		return working
+	}
+	mergedPrompt := a.skillSystemPrompt + "\nMCP tools are available through tool calling in this chat."
+	if len(working) > 0 && working[0].Role == "system" {
+		working[0].Content = strings.TrimSpace(mergedPrompt + "\n\n" + working[0].Content)
+		return working
+	}
+	return append([]Message{{Role: "system", Content: mergedPrompt}}, working...)
 }
 
 func (a *OpenAICompatibleAdapter) requestAndReadRound(ctx context.Context, traceID string, round int, url string, body []byte, emit EmitFunc) (*streamRoundResult, error) {
@@ -491,16 +511,107 @@ func collectToolCalls(m map[int]*ToolCall) []ToolCall {
 }
 
 func defaultOpenAITools() []openAITool {
-	var t openAITool
-	t.Type = "function"
-	t.Function.Name = "get_system_time"
-	t.Function.Description = "Get current system time."
-	t.Function.Parameters = map[string]any{
+	timeTool := openAITool{}
+	timeTool.Type = "function"
+	timeTool.Function.Name = "get_system_time"
+	timeTool.Function.Description = "Get current system time."
+	timeTool.Function.Parameters = map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
 		"properties":           map[string]any{},
 	}
-	return []openAITool{t}
+
+	writeFileTool := openAITool{}
+	writeFileTool.Type = "function"
+	writeFileTool.Function.Name = "write_frontend_temp_file"
+	writeFileTool.Function.Description = "Write a generated file into frontend temporary directory. Use content_base64 for binary files such as xlsx."
+	writeFileTool.Function.Parameters = map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"file_name"},
+		"properties": map[string]any{
+			"file_name": map[string]any{
+				"type":        "string",
+				"description": "Relative filename under frontend temp directory, for example report.xlsx.",
+			},
+			"text_content": map[string]any{
+				"type":        "string",
+				"description": "Text content to write.",
+			},
+			"content_base64": map[string]any{
+				"type":        "string",
+				"description": "Base64 encoded file bytes. Prefer this for binary files.",
+			},
+			"overwrite": map[string]any{
+				"type":        "boolean",
+				"description": "Whether to overwrite existing file. Default false.",
+			},
+		},
+	}
+	minimaxXlsxTool := openAITool{}
+	minimaxXlsxTool.Type = "function"
+	minimaxXlsxTool.Function.Name = "minimax-xlsx"
+	minimaxXlsxTool.Function.Description = "Create a real .xlsx file in frontend temporary directory with optional headers, rows, and current time."
+	minimaxXlsxTool.Function.Parameters = map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"properties": map[string]any{
+			"file_name": map[string]any{
+				"type":        "string",
+				"description": "Relative xlsx filename under frontend temp directory.",
+			},
+			"sheet_name": map[string]any{
+				"type":        "string",
+				"description": "Sheet name.",
+			},
+			"headers": map[string]any{
+				"type":        "array",
+				"items":       map[string]any{"type": "string"},
+				"description": "Header row.",
+			},
+			"rows": map[string]any{
+				"type": "array",
+				"items": map[string]any{
+					"type":  "array",
+					"items": map[string]any{"type": "string"},
+				},
+				"description": "Data rows.",
+			},
+			"include_current_time": map[string]any{
+				"type":        "boolean",
+				"description": "Append current system time row.",
+			},
+			"overwrite": map[string]any{
+				"type":        "boolean",
+				"description": "Overwrite existing file.",
+			},
+		},
+	}
+
+	runSkillBashTool := openAITool{}
+	runSkillBashTool.Type = "function"
+	runSkillBashTool.Function.Name = "run_skill_bash"
+	runSkillBashTool.Function.Description = "Run bash command inside backend/skills/<skill_name>. Use this to execute skill scripts."
+	runSkillBashTool.Function.Parameters = map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"skill_name", "command"},
+		"properties": map[string]any{
+			"skill_name": map[string]any{
+				"type":        "string",
+				"description": "Skill folder name, for example minimax-xlsx.",
+			},
+			"command": map[string]any{
+				"type":        "string",
+				"description": "Bash command executed in skill directory. Env SKILL_DIR and FRONTEND_TMP_DIR are available.",
+			},
+			"timeout_seconds": map[string]any{
+				"type":        "integer",
+				"description": "Timeout seconds, default 120.",
+			},
+		},
+	}
+	return []openAITool{timeTool, writeFileTool, minimaxXlsxTool, runSkillBashTool}
 }
 
 func normalizeDelta(previous, incoming string) (delta string, next string) {

@@ -10,4 +10,5 @@ backends:
     model: "MiniMax-M2.7"
     temperature: 1.0
     reasoning_split: true
+    tool_max_rounds: 16
     enabled: true
