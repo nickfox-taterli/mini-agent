@@ -60,7 +60,7 @@ func TestStreamChat_AutoCallMCPTool(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
 	}
-	srv := server.New(manager, "127.0.0.1", 18888)
+	srv := server.New(manager, "127.0.0.1", 18888, "http://127.0.0.1:18889")
 
 	body := map[string]any{
 		"messages": []map[string]string{{"role": "user", "content": "现在几点"}},
@@ -94,6 +94,9 @@ func TestStreamChat_AutoCallMCPTool(t *testing.T) {
 	}
 	if !strings.Contains(requestBodies[0], `"tools"`) || !strings.Contains(requestBodies[0], `"get_system_time"`) {
 		t.Fatalf("first request missing tools definition: %s", requestBodies[0])
+	}
+	if strings.Contains(requestBodies[0], `"write_frontend_temp_file"`) || strings.Contains(requestBodies[0], `"minimax-xlsx"`) {
+		t.Fatalf("first request still includes removed tools: %s", requestBodies[0])
 	}
 	if !strings.Contains(requestBodies[1], `"role":"tool"`) ||
 		!strings.Contains(requestBodies[1], `"tool_call_id":"call_1"`) ||

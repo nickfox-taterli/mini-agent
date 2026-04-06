@@ -14,6 +14,7 @@
 - 后端 Skill 根目录: `backend/skills`
 - 每个 skill 以子目录存在,例如: `backend/skills/minimax-xlsx`
 - 启动时会读取每个 skill 的 `SKILL.md` 中 `name/description`,并注入到模型系统提示词,让模型可感知可用 skill
+- Skill 与 MCP 的新增步骤,见 `docs/skills-mcp.md`
 
 ## 配置文件
 

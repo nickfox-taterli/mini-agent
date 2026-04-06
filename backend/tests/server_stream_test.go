@@ -42,7 +42,7 @@ func TestStreamChat_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
 	}
-	srv := server.New(manager, "127.0.0.1", 18888)
+	srv := server.New(manager, "127.0.0.1", 18888, "http://127.0.0.1:18889")
 
 	body := map[string]any{
 		"messages": []map[string]string{{"role": "user", "content": "你好"}},
@@ -97,7 +97,7 @@ func TestStreamChat_UpstreamError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
 	}
-	srv := server.New(manager, "127.0.0.1", 18888)
+	srv := server.New(manager, "127.0.0.1", 18888, "http://127.0.0.1:18889")
 
 	body := map[string]any{
 		"messages": []map[string]string{{"role": "user", "content": "你好"}},

@@ -7,6 +7,7 @@
 - `docs/architecture.md`: 系统架构与数据流
 - `docs/api.md`: 后端 HTTP + SSE 接口协议
 - `docs/backend.md`: 后端模块说明与扩展方式
+- `docs/skills-mcp.md`: Skill 与 MCP 扩展实操指南
 - `docs/frontend.md`: 前端页面结构与流式处理
 - `docs/development.md`: 本地开发,测试与排障流程
 

@@ -180,6 +180,7 @@ func (a *OpenAICompatibleAdapter) StreamChat(ctx context.Context, req StreamRequ
 	}
 
 	for round := 0; round <= maxToolRounds; round++ {
+		tools := defaultOpenAITools()
 		payload := openAIStreamReq{
 			Model:       a.cfg.Model,
 			Messages:    workingMessages,
@@ -188,7 +189,7 @@ func (a *OpenAICompatibleAdapter) StreamChat(ctx context.Context, req StreamRequ
 			ExtraBody: map[string]any{
 				"reasoning_split": a.cfg.ReasoningSplit,
 			},
-			Tools:      defaultOpenAITools(),
+			Tools:      tools,
 			ToolChoice: "auto",
 		}
 
@@ -196,6 +197,7 @@ func (a *OpenAICompatibleAdapter) StreamChat(ctx context.Context, req StreamRequ
 		if err != nil {
 			return fmt.Errorf("marshal request: %w", err)
 		}
+		logUpstreamRequest(traceID, a.cfg.ID, round+1, payload, tools, body)
 
 		url := strings.TrimSuffix(a.cfg.BaseURL, "/") + "/chat/completions"
 		roundRes, err := a.requestAndReadRound(ctx, traceID, round+1, url, body, emit)
@@ -224,12 +226,23 @@ func (a *OpenAICompatibleAdapter) StreamChat(ctx context.Context, req StreamRequ
 		})
 
 		for _, call := range roundRes.ToolCalls {
+			argsPreview := call.Function.Arguments
+			if len(argsPreview) > 200 {
+				argsPreview = argsPreview[:200] + "..."
+			}
+			log.Printf("[trace=%s] tool=%s call_id=%s args=%s", traceID, call.Function.Name, call.ID, argsPreview)
+
 			out, callErr := mcpserver.ExecuteToolByJSON(call.Function.Name, call.Function.Arguments)
 			if callErr != nil {
 				log.Printf("[trace=%s] tool=%s call_id=%s exec_error=%v", traceID, call.Function.Name, call.ID, callErr)
 				out = map[string]any{"error": callErr.Error()}
 			} else {
-				log.Printf("[trace=%s] tool=%s call_id=%s exec_ok", traceID, call.Function.Name, call.ID)
+				resultJSON, _ := json.Marshal(out)
+				resultPreview := string(resultJSON)
+				if len(resultPreview) > 300 {
+					resultPreview = resultPreview[:300] + "..."
+				}
+				log.Printf("[trace=%s] tool=%s call_id=%s exec_ok result=%s", traceID, call.Function.Name, call.ID, resultPreview)
 			}
 			b, _ := json.Marshal(out)
 			workingMessages = append(workingMessages, Message{
@@ -521,73 +534,6 @@ func defaultOpenAITools() []openAITool {
 		"properties":           map[string]any{},
 	}
 
-	writeFileTool := openAITool{}
-	writeFileTool.Type = "function"
-	writeFileTool.Function.Name = "write_frontend_temp_file"
-	writeFileTool.Function.Description = "Write a generated file into frontend temporary directory. Use content_base64 for binary files such as xlsx."
-	writeFileTool.Function.Parameters = map[string]any{
-		"type":                 "object",
-		"additionalProperties": false,
-		"required":             []string{"file_name"},
-		"properties": map[string]any{
-			"file_name": map[string]any{
-				"type":        "string",
-				"description": "Relative filename under frontend temp directory, for example report.xlsx.",
-			},
-			"text_content": map[string]any{
-				"type":        "string",
-				"description": "Text content to write.",
-			},
-			"content_base64": map[string]any{
-				"type":        "string",
-				"description": "Base64 encoded file bytes. Prefer this for binary files.",
-			},
-			"overwrite": map[string]any{
-				"type":        "boolean",
-				"description": "Whether to overwrite existing file. Default false.",
-			},
-		},
-	}
-	minimaxXlsxTool := openAITool{}
-	minimaxXlsxTool.Type = "function"
-	minimaxXlsxTool.Function.Name = "minimax-xlsx"
-	minimaxXlsxTool.Function.Description = "Create a real .xlsx file in frontend temporary directory with optional headers, rows, and current time."
-	minimaxXlsxTool.Function.Parameters = map[string]any{
-		"type":                 "object",
-		"additionalProperties": false,
-		"properties": map[string]any{
-			"file_name": map[string]any{
-				"type":        "string",
-				"description": "Relative xlsx filename under frontend temp directory.",
-			},
-			"sheet_name": map[string]any{
-				"type":        "string",
-				"description": "Sheet name.",
-			},
-			"headers": map[string]any{
-				"type":        "array",
-				"items":       map[string]any{"type": "string"},
-				"description": "Header row.",
-			},
-			"rows": map[string]any{
-				"type": "array",
-				"items": map[string]any{
-					"type":  "array",
-					"items": map[string]any{"type": "string"},
-				},
-				"description": "Data rows.",
-			},
-			"include_current_time": map[string]any{
-				"type":        "boolean",
-				"description": "Append current system time row.",
-			},
-			"overwrite": map[string]any{
-				"type":        "boolean",
-				"description": "Overwrite existing file.",
-			},
-		},
-	}
-
 	runSkillBashTool := openAITool{}
 	runSkillBashTool.Type = "function"
 	runSkillBashTool.Function.Name = "run_skill_bash"
@@ -603,7 +549,7 @@ func defaultOpenAITools() []openAITool {
 			},
 			"command": map[string]any{
 				"type":        "string",
-				"description": "Bash command executed in skill directory. Env SKILL_DIR and FRONTEND_TMP_DIR are available.",
+				"description": "Bash command executed in skill directory. Env SKILL_DIR, FRONTEND_UPLOAD_DIR and FRONTEND_UPLOAD_URL_BASE are available.",
 			},
 			"timeout_seconds": map[string]any{
 				"type":        "integer",
@@ -611,7 +557,35 @@ func defaultOpenAITools() []openAITool {
 			},
 		},
 	}
-	return []openAITool{timeTool, writeFileTool, minimaxXlsxTool, runSkillBashTool}
+	return []openAITool{timeTool, runSkillBashTool}
+}
+
+func logUpstreamRequest(traceID string, backendID string, round int, payload openAIStreamReq, tools []openAITool, rawBody []byte) {
+	toolNames := make([]string, 0, len(tools))
+	for _, tool := range tools {
+		name := strings.TrimSpace(tool.Function.Name)
+		if name == "" {
+			name = "(unnamed)"
+		}
+		toolNames = append(toolNames, name)
+	}
+	preview := string(rawBody)
+	if len(preview) > 1200 {
+		preview = preview[:1200] + "...(truncated)"
+	}
+	log.Printf(
+		"[trace=%s] backend=%s round=%d upstream_request model=%s messages=%d tool_choice=%s tools=%d tool_names=%v body_bytes=%d body_preview=%s",
+		traceID,
+		backendID,
+		round,
+		payload.Model,
+		len(payload.Messages),
+		payload.ToolChoice,
+		len(toolNames),
+		toolNames,
+		len(rawBody),
+		preview,
+	)
 }
 
 func normalizeDelta(previous, incoming string) (delta string, next string) {

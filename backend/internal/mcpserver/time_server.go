@@ -2,7 +2,9 @@ package mcpserver
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"os"
@@ -30,14 +32,6 @@ func NewHTTPHandler() http.Handler {
 		Name:        "get_system_time",
 		Description: "Get current system time.",
 	}, getSystemTime)
-	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "write_frontend_temp_file",
-		Description: "Write a generated file into frontend temporary directory. Use content_base64 for binary files.",
-	}, writeFrontendTempFile)
-	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "minimax-xlsx",
-		Description: "Create a real .xlsx file in frontend temporary directory with optional sample data and current system time.",
-	}, minimaxXlsx)
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "run_skill_bash",
 		Description: "Run a bash command inside backend/skills/<skill_name>. Use env SKILL_DIR and FRONTEND_TMP_DIR for paths.",
@@ -71,7 +65,7 @@ func getSystemTimeOutput() (systemTimeOutput, error) {
 }
 
 type writeFrontendTempFileInput struct {
-	FileName      string `json:"file_name" jsonschema:"Relative file name under frontend temp directory"`
+	FileName      string `json:"file_name" jsonschema:"Extension hint for output file, e.g. report.xlsx. System generates a unique filename; only the extension is used."`
 	TextContent   string `json:"text_content,omitempty" jsonschema:"Text content to write"`
 	ContentBase64 string `json:"content_base64,omitempty" jsonschema:"Base64 encoded bytes for binary files"`
 	Overwrite     bool   `json:"overwrite,omitempty" jsonschema:"Overwrite existing file, default false"`
@@ -79,6 +73,8 @@ type writeFrontendTempFileInput struct {
 
 type writeFrontendTempFileOutput struct {
 	Path      string `json:"path" jsonschema:"Absolute path of written file"`
+	URL       string `json:"url" jsonschema:"HTTP URL to access the file"`
+	Filename  string `json:"filename" jsonschema:"Generated filename"`
 	SizeBytes int    `json:"size_bytes" jsonschema:"Output file size in bytes"`
 	Created   bool   `json:"created" jsonschema:"Whether file was newly created"`
 }
@@ -92,15 +88,12 @@ func writeFrontendTempFile(_ context.Context, _ *mcp.CallToolRequest, in writeFr
 }
 
 func writeFrontendTempFileToDisk(in writeFrontendTempFileInput) (writeFrontendTempFileOutput, error) {
-	fileName := strings.TrimSpace(in.FileName)
-	if fileName == "" {
-		return writeFrontendTempFileOutput{}, fmt.Errorf("file_name is required")
-	}
-	if filepath.IsAbs(fileName) {
+	extensionHint := strings.TrimSpace(in.FileName)
+	if filepath.IsAbs(extensionHint) {
 		return writeFrontendTempFileOutput{}, fmt.Errorf("file_name must be relative")
 	}
 
-	cleanName := filepath.Clean(fileName)
+	cleanName := filepath.Clean(extensionHint)
 	if strings.HasPrefix(cleanName, "..") || strings.Contains(cleanName, "../") || cleanName == "." {
 		return writeFrontendTempFileOutput{}, fmt.Errorf("invalid file_name: path traversal is not allowed")
 	}
@@ -120,16 +113,16 @@ func writeFrontendTempFileToDisk(in writeFrontendTempFileInput) (writeFrontendTe
 }
 
 func writeFrontendTempBytes(cleanName string, data []byte, overwrite bool) (writeFrontendTempFileOutput, error) {
-	rootAbs, err := resolveFrontendTmpDir()
+	uploadDir, err := resolveFrontendUploadDir()
 	if err != nil {
-		return writeFrontendTempFileOutput{}, fmt.Errorf("resolve frontend tmp dir: %w", err)
+		return writeFrontendTempFileOutput{}, fmt.Errorf("resolve upload dir: %w", err)
 	}
 
-	targetPath := filepath.Join(rootAbs, cleanName)
-	targetDir := filepath.Dir(targetPath)
-	if err := os.MkdirAll(targetDir, 0o755); err != nil {
-		return writeFrontendTempFileOutput{}, fmt.Errorf("create target dir: %w", err)
-	}
+	// 从 cleanName 提取扩展名, 生成随机文件名
+	ext := extractExtension(cleanName)
+	randomName := generateRandomFilename(ext)
+
+	targetPath := filepath.Join(uploadDir, randomName)
 
 	if !overwrite {
 		if _, err := os.Stat(targetPath); err == nil {
@@ -145,9 +138,32 @@ func writeFrontendTempBytes(cleanName string, data []byte, overwrite bool) (writ
 		return writeFrontendTempFileOutput{}, fmt.Errorf("write file: %w", err)
 	}
 
+	fileURL := BuildFileURL(uploadDir, randomName)
+
 	return writeFrontendTempFileOutput{
 		Path:      targetPath,
+		URL:       fileURL,
+		Filename:  randomName,
 		SizeBytes: len(data),
 		Created:   created,
 	}, nil
+}
+
+// extractExtension 从文件名中提取扩展名, 包括点号.
+// 例如 "report.xlsx" -> ".xlsx", "data" -> ""
+func extractExtension(name string) string {
+	ext := filepath.Ext(name)
+	return ext
+}
+
+// generateRandomFilename 生成随机十六进制文件名.
+// 例如 ".xlsx" -> "a1b2c3d4.xlsx"
+func generateRandomFilename(ext string) string {
+	b := make([]byte, 4)
+	_, _ = rand.Read(b)
+	name := hex.EncodeToString(b)
+	if ext != "" {
+		return name + ext
+	}
+	return name
 }

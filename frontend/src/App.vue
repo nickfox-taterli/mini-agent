@@ -107,6 +107,12 @@ const selectedBackendId = ref('')
 const textareaRef = ref(null)
 const expandedThinking = reactive(new Map())
 
+// 文件上传状态
+const fileInputRef = ref(null)
+const uploading = ref(false)
+const attachedFile = ref(null) // { name, url }
+const isDragging = ref(false)
+
 // 对话持久化
 const conversations = ref([])
 const currentConversationId = ref(null)
@@ -348,7 +354,7 @@ function getThinkingDuration(msg) {
   return '...'
 }
 
-const canSend = computed(() => input.value.trim() !== '' && !loading.value)
+const canSend = computed(() => (input.value.trim() !== '' || attachedFile.value !== null) && !loading.value)
 const isLoading = computed(() => loading.value)
 
 // 用于中断流式请求的 AbortController
@@ -488,6 +494,72 @@ async function copyCode(event) {
   }
 }
 
+// ===== 文件上传 =====
+
+function triggerFileInput() {
+  if (fileInputRef.value) {
+    fileInputRef.value.click()
+  }
+}
+
+async function handleFileSelect(event) {
+  const file = event.target.files?.[0]
+  if (!file) return
+  await uploadFile(file)
+  // 重置 input 以便再次选择同一文件
+  event.target.value = ''
+}
+
+async function uploadFile(file) {
+  uploading.value = true
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await fetch(`${apiBase}/api/upload`, {
+      method: 'POST',
+      body: formData
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      alert(data.error || `上传失败: HTTP ${res.status}`)
+      return
+    }
+    const data = await res.json()
+    attachedFile.value = {
+      name: file.name,
+      url: data.url
+    }
+  } catch (err) {
+    alert(`上传失败: ${err.message}`)
+  } finally {
+    uploading.value = false
+  }
+}
+
+function removeAttachedFile() {
+  attachedFile.value = null
+}
+
+// 拖放处理
+function handleDragOver(event) {
+  event.preventDefault()
+  isDragging.value = true
+}
+
+function handleDragLeave(event) {
+  event.preventDefault()
+  isDragging.value = false
+}
+
+async function handleDrop(event) {
+  event.preventDefault()
+  isDragging.value = false
+  const file = event.dataTransfer?.files?.[0]
+  if (file) {
+    await uploadFile(file)
+  }
+}
+
 async function sendMessage() {
   // 正在输出时点击 = 中断
   if (loading.value) {
@@ -501,7 +573,14 @@ async function sendMessage() {
   await nextTick()
   if (textareaRef.value) textareaRef.value.style.height = 'auto'
 
-  messages.value.push({ role: 'user', content: userText })
+  // 拼接附件 URL 到消息内容
+  let finalText = userText
+  if (attachedFile.value) {
+    finalText += `\n\n[附件: ${attachedFile.value.name}](${attachedFile.value.url})`
+    attachedFile.value = null
+  }
+
+  messages.value.push({ role: 'user', content: finalText })
   // 保存后立即异步生成标题
   saveCurrentMessages()
   generateTitleAsync(currentConversationId.value)
@@ -725,7 +804,24 @@ async function sendMessage() {
       <!-- 底部输入栏 -->
       <div class="bottom-bar">
         <div class="panel">
-          <div class="composer">
+          <div
+            class="composer"
+            :class="{ 'composer-dragover': isDragging }"
+            @dragover="handleDragOver"
+            @dragleave="handleDragLeave"
+            @drop="handleDrop"
+          >
+            <input
+              ref="fileInputRef"
+              type="file"
+              class="file-input-hidden"
+              @change="handleFileSelect"
+            />
+            <button class="attach-btn" @click="triggerFileInput" :disabled="loading || uploading" title="上传文件">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+              </svg>
+            </button>
             <textarea
               ref="textareaRef"
               v-model="input"
@@ -737,22 +833,22 @@ async function sendMessage() {
               @keydown.enter.exact.prevent="sendMessage"
             />
             <div class="send-wrapper">
-              <div v-if="!input.trim() && !loading" class="send-tooltip">请输入你的问题</div>
+              <div v-if="!input.trim() && !loading && !attachedFile" class="send-tooltip">请输入你的问题</div>
               <button
                 class="send"
                 :class="{
-                  'send-active': input.trim() && !loading,
+                  'send-active': (input.trim() || attachedFile) && !loading,
                   'send-loading': loading
                 }"
-                :disabled="!input.trim() && !loading"
+                :disabled="!input.trim() && !attachedFile && !loading"
                 @click="sendMessage"
               >
                 <!-- 空状态: 暗淡箭头 -->
-                <svg v-if="!input.trim() && !loading" width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <svg v-if="!input.trim() && !attachedFile && !loading" width="18" height="18" viewBox="0 0 18 18" fill="none">
                   <path d="M9 14V4M9 4L4.5 8.5M9 4L13.5 8.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
                 <!-- 有输入: 点亮箭头 -->
-                <svg v-else-if="input.trim() && !loading" width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <svg v-else-if="(input.trim() || attachedFile) && !loading" width="18" height="18" viewBox="0 0 18 18" fill="none">
                   <path d="M9 14V4M9 4L4.5 8.5M9 4L13.5 8.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
                 <!-- 加载中: 停止图标 -->
@@ -760,6 +856,20 @@ async function sendMessage() {
                   <rect x="2" y="2" width="10" height="10" rx="2"/>
                 </svg>
               </button>
+            </div>
+          </div>
+          <!-- 附件预览 -->
+          <div v-if="attachedFile || uploading" class="attachment-bar">
+            <div v-if="uploading" class="attachment-chip">
+              <span class="attachment-spinner"></span>
+              <span>上传中...</span>
+            </div>
+            <div v-else class="attachment-chip">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/><polyline points="13 2 13 9 20 9"/>
+              </svg>
+              <span class="attachment-name">{{ attachedFile?.name }}</span>
+              <button class="attachment-remove" @click="removeAttachedFile" title="移除附件">&times;</button>
             </div>
           </div>
           <div class="meta">

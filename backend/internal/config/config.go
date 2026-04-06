@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -13,8 +14,9 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Host string `yaml:"host"`
-	Port int    `yaml:"port"`
+	Host        string `yaml:"host"`
+	Port        int    `yaml:"port"`
+	FrontendURL string `yaml:"frontend_url"`
 }
 
 type BackendConfig struct {
@@ -78,6 +80,10 @@ func (c *Config) Validate() error {
 	if enabledCount == 0 {
 		return fmt.Errorf("at least one backend must be enabled")
 	}
+	if c.Server.FrontendURL == "" || !strings.HasPrefix(c.Server.FrontendURL, "http") {
+		return fmt.Errorf("server.frontend_url is required and must start with http")
+	}
+	c.Server.FrontendURL = strings.TrimRight(c.Server.FrontendURL, "/")
 
 	return nil
 }

@@ -883,7 +883,13 @@ html {
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
   border-radius: 16px;
-  padding: 12px 52px 14px 16px;
+  padding: 12px 52px 14px 48px;
+  transition: border-color 0.2s ease;
+}
+
+.composer-dragover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-tertiary));
 }
 
 .input {
@@ -1076,4 +1082,89 @@ html {
   .input {
     font-size: 16px; /* Prevents iOS zoom */
   }
+}
+
+/* ===== File Upload ===== */
+
+.file-input-hidden {
+  display: none;
+}
+
+.attach-btn {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.attach-btn:hover:not(:disabled) {
+  color: var(--text-secondary);
+  background: var(--border);
+}
+
+.attach-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 附件预览条 */
+.attachment-bar {
+  padding: 6px 16px 0;
+}
+
+.attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.attachment-name {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-remove {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 2px;
+  margin-left: 2px;
+}
+
+.attachment-remove:hover {
+  color: var(--text-primary);
+}
+
+.attachment-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }

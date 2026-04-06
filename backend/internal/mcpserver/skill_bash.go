@@ -21,12 +21,14 @@ type runSkillBashInput struct {
 }
 
 type runSkillBashOutput struct {
-	SkillDir       string `json:"skill_dir" jsonschema:"Absolute skill working directory"`
-	ExitCode       int    `json:"exit_code" jsonschema:"Process exit code"`
-	Stdout         string `json:"stdout" jsonschema:"Captured stdout"`
-	Stderr         string `json:"stderr" jsonschema:"Captured stderr"`
-	DurationMs     int64  `json:"duration_ms" jsonschema:"Execution duration in milliseconds"`
-	FrontendTmpDir string `json:"frontend_tmp_dir" jsonschema:"Absolute frontend temp directory path"`
+	SkillDir           string `json:"skill_dir" jsonschema:"Absolute skill working directory"`
+	ExitCode           int    `json:"exit_code" jsonschema:"Process exit code"`
+	Stdout             string `json:"stdout" jsonschema:"Captured stdout"`
+	Stderr             string `json:"stderr" jsonschema:"Captured stderr"`
+	DurationMs         int64  `json:"duration_ms" jsonschema:"Execution duration in milliseconds"`
+	FrontendUploadDir  string `json:"frontend_upload_dir" jsonschema:"Absolute frontend upload directory path"`
+	FrontendTmpDir     string `json:"frontend_tmp_dir" jsonschema:"Deprecated: use frontend_upload_dir"`
+	FrontendUploadURL  string `json:"frontend_upload_url" jsonschema:"HTTP URL base for upload directory"`
 }
 
 func runSkillBash(_ context.Context, _ *mcp.CallToolRequest, in runSkillBashInput) (*mcp.CallToolResult, runSkillBashOutput, error) {
@@ -71,6 +73,11 @@ func runSkillBashLocal(in runSkillBashInput) (runSkillBashOutput, error) {
 	if err != nil {
 		return runSkillBashOutput{}, fmt.Errorf("resolve frontend tmp dir: %w", err)
 	}
+	frontendUploadDir, err := resolveFrontendUploadDir()
+	if err != nil {
+		return runSkillBashOutput{}, fmt.Errorf("resolve frontend upload dir: %w", err)
+	}
+	uploadURLBase := frontendURL + "/" + uploadDateRelPath
 
 	start := time.Now()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
@@ -81,6 +88,8 @@ func runSkillBashLocal(in runSkillBashInput) (runSkillBashOutput, error) {
 	cmd.Env = append(os.Environ(),
 		"SKILL_DIR="+skillDir,
 		"FRONTEND_TMP_DIR="+frontendTmpDir,
+		"FRONTEND_UPLOAD_DIR="+frontendUploadDir,
+		"FRONTEND_UPLOAD_URL_BASE="+uploadURLBase,
 	)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -101,12 +110,14 @@ func runSkillBashLocal(in runSkillBashInput) (runSkillBashOutput, error) {
 	}
 
 	out := runSkillBashOutput{
-		SkillDir:       skillDir,
-		ExitCode:       exitCode,
-		Stdout:         stdout.String(),
-		Stderr:         stderr.String(),
-		DurationMs:     time.Since(start).Milliseconds(),
-		FrontendTmpDir: frontendTmpDir,
+		SkillDir:          skillDir,
+		ExitCode:          exitCode,
+		Stdout:            stdout.String(),
+		Stderr:            stderr.String(),
+		DurationMs:        time.Since(start).Milliseconds(),
+		FrontendTmpDir:    frontendTmpDir,
+		FrontendUploadDir: frontendUploadDir,
+		FrontendUploadURL: uploadURLBase,
 	}
 	if runErr != nil {
 		return out, fmt.Errorf("command failed with exit_code=%d", exitCode)

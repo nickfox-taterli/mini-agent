@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 )
 
+// resolveFrontendTmpDir 已弃用, 请使用 resolveFrontendUploadDir.
+// 保留用于向后兼容 (测试).
 func resolveFrontendTmpDir() (string, error) {
 	frontendDir, err := resolveFrontendDir([]string{
 		filepath.Join("..", "frontend"),

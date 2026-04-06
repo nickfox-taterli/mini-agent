@@ -14,7 +14,7 @@ import (
 )
 
 type minimaxXlsxInput struct {
-	FileName           string     `json:"file_name" jsonschema:"Relative xlsx file name under frontend temp directory, for example report.xlsx"`
+	FileName           string     `json:"file_name" jsonschema:"Extension hint for output file, e.g. report.xlsx. System generates a unique filename."`
 	SheetName          string     `json:"sheet_name,omitempty" jsonschema:"Worksheet name, default Sheet1"`
 	Headers            []string   `json:"headers,omitempty" jsonschema:"Header row"`
 	Rows               [][]string `json:"rows,omitempty" jsonschema:"Data rows"`
@@ -24,6 +24,8 @@ type minimaxXlsxInput struct {
 
 type minimaxXlsxOutput struct {
 	Path      string `json:"path" jsonschema:"Absolute path of written xlsx file"`
+	URL       string `json:"url" jsonschema:"HTTP URL to access the file"`
+	Filename  string `json:"filename" jsonschema:"Generated filename"`
 	SizeBytes int    `json:"size_bytes" jsonschema:"Output file size in bytes"`
 	Created   bool   `json:"created" jsonschema:"Whether file was newly created"`
 	Rows      int    `json:"rows" jsonschema:"Total data rows excluding header"`
@@ -41,7 +43,7 @@ func minimaxXlsx(_ context.Context, _ *mcp.CallToolRequest, in minimaxXlsxInput)
 func minimaxXlsxToDisk(in minimaxXlsxInput) (minimaxXlsxOutput, error) {
 	fileName := strings.TrimSpace(in.FileName)
 	if fileName == "" {
-		fileName = fmt.Sprintf("xlsx/report-%d.xlsx", time.Now().Unix())
+		fileName = "report.xlsx"
 	}
 	if !strings.HasSuffix(strings.ToLower(fileName), ".xlsx") {
 		fileName += ".xlsx"
@@ -103,6 +105,8 @@ func minimaxXlsxToDisk(in minimaxXlsxInput) (minimaxXlsxOutput, error) {
 	}
 	return minimaxXlsxOutput{
 		Path:      wrote.Path,
+		URL:       wrote.URL,
+		Filename:  wrote.Filename,
 		SizeBytes: wrote.SizeBytes,
 		Created:   wrote.Created,
 		Rows:      len(rows),

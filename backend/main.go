@@ -9,6 +9,7 @@ import (
 
 	"taterli-agent-chat/backend/internal/backend"
 	"taterli-agent-chat/backend/internal/config"
+	"taterli-agent-chat/backend/internal/mcpserver"
 	"taterli-agent-chat/backend/internal/server"
 )
 
@@ -31,7 +32,9 @@ func main() {
 		log.Fatalf("init backend manager: %v", err)
 	}
 
-	srv := server.New(manager, cfg.Server.Host, cfg.Server.Port)
+	mcpserver.InitConfig(cfg.Server.FrontendURL)
+
+	srv := server.New(manager, cfg.Server.Host, cfg.Server.Port, cfg.Server.FrontendURL)
 	log.Printf("backend listening on http://%s:%d, log_file=%s", cfg.Server.Host, cfg.Server.Port, logPath)
 	if err := srv.Run(); err != nil {
 		log.Fatalf("run server: %v", err)
