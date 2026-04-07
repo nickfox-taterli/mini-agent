@@ -69,8 +69,11 @@ func BuildSystemPrompt(sk []Skill) string {
 		b.WriteString("\n")
 	}
 	b.WriteString("For skill execution, prefer tool `run_skill_bash` with skill_name and command.\n")
-	b.WriteString("For generated files, write directly under FRONTEND_UPLOAD_DIR and return the URL using FRONTEND_UPLOAD_URL_BASE.\n")
-	b.WriteString("When generating files, build a downloadable URL from FRONTEND_UPLOAD_URL_BASE and return it in your response.\n")
+	b.WriteString("For generated files, write directly under FRONTEND_UPLOAD_DIR.\n")
+	b.WriteString("When a file is generated, return the absolute local file path first.\n")
+	b.WriteString("Do NOT guess or construct download URL in natural language.\n")
+	b.WriteString("If you need a downloadable URL, call MCP tool `convert_local_path_to_url` with that file path, then use the tool output URL.\n")
+	b.WriteString("Never invent host/port/path and never rewrite path segments.\n")
 	return b.String()
 }
 

@@ -13,7 +13,10 @@ metadata:
 # MiniMax XLSX Skill
 
 Handle the request directly. Do NOT spawn sub-agents. Always write the output file the user requests.
-In this project, prefer writing generated files to `../frontend/tmp/` (relative to `backend/`), or use tool `write_frontend_temp_file` when available.
+In this project, write generated files to `FRONTEND_UPLOAD_DIR`.
+For delivery, return the generated file `local_path` first.
+Do NOT manually construct download URLs.
+If a download URL is required, call MCP tool `convert_local_path_to_url` with `local_path` and use the tool output URL.
 
 ## Task Routing
 
@@ -123,7 +126,8 @@ Run `formula_check.py` for static validation. Use `libreoffice_recalc.py` for dy
 2. **CREATE → XML template**: Copy minimal template, edit XML directly, pack with `xlsx_pack.py`
 3. **EDIT → XML**: Never openpyxl round-trip. Use unpack/edit/pack scripts
 4. **Always produce the output file** - this is the #1 priority
-5. **Validate before delivery**: `formula_check.py` exit code 0 = safe
+5. **Delivery format**: include `local_path` for each generated file; URLs must come from `convert_local_path_to_url`
+6. **Validate before delivery**: `formula_check.py` exit code 0 = safe
 
 ## Utility Scripts
 

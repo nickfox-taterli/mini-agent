@@ -128,6 +128,8 @@ SSE 事件:
 
 - `get_system_time`: 获取系统时间.
 - `run_skill_bash`: 在 `backend/skills/<skill_name>` 中执行 Bash 命令,用于通用 skill 执行.
+- `web_fetch`: 抓取网页文本内容.
+- `convert_local_path_to_url`: 将前端目录下的本地磁盘路径转换为可下载 URL.
 
 前端调用示例(调用工具):
 
@@ -166,6 +168,22 @@ SSE 事件:
     "arguments": {
       "skill_name": "minimax-xlsx",
       "command": "pwd"
+    }
+  }
+}
+```
+
+路径转 URL 调用示例:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "convert-path",
+  "method": "tools/call",
+  "params": {
+    "name": "convert_local_path_to_url",
+    "arguments": {
+      "local_path": "/root/agent/frontend/upload/2026/04/14/report.xlsx"
     }
   }
 }

@@ -44,6 +44,8 @@ func New(m *backend.Manager, host string, port int, frontendURL string) *Server 
 		MaxAge:           12 * 3600,
 	}))
 
+	mcpserver.InitConfig(frontendURL)
+
 	s := &Server{r: r, m: m, host: host, port: port, frontendURL: frontendURL}
 	s.mountRoutes()
 	return s

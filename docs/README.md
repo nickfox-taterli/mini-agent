@@ -10,6 +10,7 @@
 - `docs/skills-mcp.md`: Skill 与 MCP 扩展实操指南
 - `docs/frontend.md`: 前端页面结构与流式处理
 - `docs/development.md`: 本地开发,测试与排障流程
+- `docs/notes.md`: 关键决策与经验笔记
 
 ## 阅读顺序建议
 

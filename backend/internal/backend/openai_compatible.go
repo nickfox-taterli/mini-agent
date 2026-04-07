@@ -549,7 +549,7 @@ func defaultOpenAITools() []openAITool {
 			},
 			"command": map[string]any{
 				"type":        "string",
-				"description": "Bash command executed in skill directory. Env SKILL_DIR, FRONTEND_UPLOAD_DIR and FRONTEND_UPLOAD_URL_BASE are available.",
+				"description": "Bash command executed in skill directory. Env SKILL_DIR and FRONTEND_UPLOAD_DIR are available.",
 			},
 			"timeout_seconds": map[string]any{
 				"type":        "integer",
@@ -557,7 +557,48 @@ func defaultOpenAITools() []openAITool {
 			},
 		},
 	}
-	return []openAITool{timeTool, runSkillBashTool}
+
+	webFetchTool := openAITool{}
+	webFetchTool.Type = "function"
+	webFetchTool.Function.Name = "web_fetch"
+	webFetchTool.Function.Description = "Fetch a web page via HTTP GET and return its text content. Only text content types are supported."
+	webFetchTool.Function.Parameters = map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"url"},
+		"properties": map[string]any{
+			"url": map[string]any{
+				"type":        "string",
+				"description": "Target URL to fetch. Must be a valid http or https URL.",
+			},
+			"timeout_seconds": map[string]any{
+				"type":        "integer",
+				"description": "Request timeout in seconds, default 30, max 120.",
+			},
+			"max_length": map[string]any{
+				"type":        "integer",
+				"description": "Maximum content length in characters, default 100000.",
+			},
+		},
+	}
+
+	convertPathTool := openAITool{}
+	convertPathTool.Type = "function"
+	convertPathTool.Function.Name = "convert_local_path_to_url"
+	convertPathTool.Function.Description = "Convert a local file path under frontend directory into a downloadable URL."
+	convertPathTool.Function.Parameters = map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"local_path"},
+		"properties": map[string]any{
+			"local_path": map[string]any{
+				"type":        "string",
+				"description": "Absolute local file path under frontend directory, for example /root/agent/frontend/upload/2026/04/14/report.xlsx.",
+			},
+		},
+	}
+
+	return []openAITool{timeTool, runSkillBashTool, webFetchTool, convertPathTool}
 }
 
 func logUpstreamRequest(traceID string, backendID string, round int, payload openAIStreamReq, tools []openAITool, rawBody []byte) {

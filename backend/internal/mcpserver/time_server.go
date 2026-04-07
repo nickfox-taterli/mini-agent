@@ -36,6 +36,14 @@ func NewHTTPHandler() http.Handler {
 		Name:        "run_skill_bash",
 		Description: "Run a bash command inside backend/skills/<skill_name>. Use env SKILL_DIR and FRONTEND_TMP_DIR for paths.",
 	}, runSkillBash)
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "web_fetch",
+		Description: "Fetch a web page via HTTP GET and return its text content. Only text content types are supported.",
+	}, webFetch)
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "convert_local_path_to_url",
+		Description: "Convert a local file path under frontend directory into a downloadable frontend URL.",
+	}, convertLocalPathToURL)
 
 	// 使用 stateless 模式, 让前端用最少请求即可调用工具.
 	return mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {

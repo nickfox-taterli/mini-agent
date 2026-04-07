@@ -23,3 +23,5 @@ backend/config.yaml
 # agent-specific docs
 AGENTS.md
 CLAUDE.md
+backend/logs/backend.log
+backend/logs/backend.log

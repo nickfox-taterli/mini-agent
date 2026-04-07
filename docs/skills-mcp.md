@@ -73,8 +73,12 @@ backend/skills/my-skill/
 
 - `SKILL_DIR`: 当前 skill 绝对路径.
 - `FRONTEND_UPLOAD_DIR`: 前端上传目录绝对路径 (按日期分区, 如 `frontend/upload/2026/04/14/`).
-- `FRONTEND_UPLOAD_URL_BASE`: 上传目录的 HTTP URL 前缀 (如 `http://127.0.0.1:18889/upload/2026/04/14`).
 - `FRONTEND_TMP_DIR`: 已弃用, 保留向后兼容.
+
+实践约定:
+
+- `run_skill_bash` 产物优先返回磁盘路径,不要让模型自行拼接下载 URL.
+- 需要 URL 时,调用 `convert_local_path_to_url` 工具做受控转换.
 
 ### 4) 最小验证
 
@@ -97,6 +101,7 @@ backend/skills/my-skill/
 
 - `get_system_time`
 - `run_skill_bash`
+- `convert_local_path_to_url`
 
 ### 2) 在 HTTP MCP Server 注册工具
 
@@ -139,7 +144,8 @@ mcp.AddTool(srv, &mcp.Tool{
 
 1. Skill 负责方法论和目录内脚本组织.
 2. MCP 提供受控执行入口,例如 `run_skill_bash`.
-3. 文件产物统一写入 `frontend/tmp`,由前端下载或展示.
+3. 文件产物统一写入 `frontend/upload/YYYY/MM/DD`.
+4. URL 一律通过 `convert_local_path_to_url` 生成,不要在 prompt 中要求模型手工拼接.
 
 好处:
 
@@ -201,5 +207,10 @@ Q: MCP 工具可在 `/api/mcp` 调用,但模型里调用失败?
 
 Q: 生成文件找不到?
 
-- 检查是否写入 `frontend/tmp`.
+- 检查是否写入 `frontend/upload/YYYY/MM/DD`.
 - 检查调用时 `file_name` 是否为相对路径.
+
+Q: 为什么不直接让模型按提示词拼接 URL?
+
+- 模型服从性存在波动,可能猜错 host/port/path.
+- 通过 `convert_local_path_to_url` 让 URL 生成走工具链,可保证稳定和可测试.

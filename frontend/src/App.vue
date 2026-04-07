@@ -775,7 +775,7 @@ async function sendMessage() {
                   <!-- 排队重试提示 -->
                   <div v-if="msg.retrying" class="retrying-indicator">
                     <span class="retrying-spinner"></span>
-                    <span>服务繁忙,正在排队重试 ({{ msg.retrying.attempt }}/{{ msg.retrying.maxAttempts }})...</span>
+                    <span>正在非常努力干活...</span>
                   </div>
                   <!-- 思考块: 可折叠, 实时计时 -->
                   <div v-if="msg.reasoning" class="thinking-block">
