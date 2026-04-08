@@ -590,6 +590,72 @@ html {
   to { transform: rotate(360deg); }
 }
 
+/* ===== Working Hard Indicator (Green) ===== */
+
+.working-hard-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  border-left: 3px solid #66BB6A;
+  border-radius: 0 6px 6px 0;
+  background: var(--bg-tertiary);
+  color: #66BB6A;
+  font-size: 13px;
+  font-weight: 500;
+  animation: workingHardPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes workingHardPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.working-hard-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(102, 187, 106, 0.3);
+  border-top-color: #66BB6A;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+/* ===== Tool Calling Indicator ===== */
+
+.tool-calling-indicator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  margin-bottom: 8px;
+  border-left: 3px solid #66BB6A;
+  border-radius: 0 6px 6px 0;
+  background: var(--bg-tertiary);
+  color: #66BB6A;
+  font-size: 13px;
+  font-weight: 500;
+  animation: toolCallingPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes toolCallingPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.tool-calling-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(102, 187, 106, 0.3);
+  border-top-color: #66BB6A;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
 /* ===== Thinking Block ===== */
 
 .thinking-block {

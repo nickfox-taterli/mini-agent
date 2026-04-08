@@ -24,4 +24,4 @@ backend/config.yaml
 AGENTS.md
 CLAUDE.md
 backend/logs/backend.log
-backend/logs/backend.log
+.playwright-mcp/

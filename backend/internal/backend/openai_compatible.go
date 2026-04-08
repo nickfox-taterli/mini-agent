@@ -232,6 +232,15 @@ func (a *OpenAICompatibleAdapter) StreamChat(ctx context.Context, req StreamRequ
 			}
 			log.Printf("[trace=%s] tool=%s call_id=%s args=%s", traceID, call.Function.Name, call.ID, argsPreview)
 
+			// 发送工具开始事件
+			if err := emit("tool_start", map[string]any{
+				"tool_name": call.Function.Name,
+				"call_id":   call.ID,
+				"arguments": call.Function.Arguments,
+			}); err != nil {
+				return err
+			}
+
 			out, callErr := mcpserver.ExecuteToolByJSON(call.Function.Name, call.Function.Arguments)
 			if callErr != nil {
 				log.Printf("[trace=%s] tool=%s call_id=%s exec_error=%v", traceID, call.Function.Name, call.ID, callErr)
@@ -245,6 +254,16 @@ func (a *OpenAICompatibleAdapter) StreamChat(ctx context.Context, req StreamRequ
 				log.Printf("[trace=%s] tool=%s call_id=%s exec_ok result=%s", traceID, call.Function.Name, call.ID, resultPreview)
 			}
 			b, _ := json.Marshal(out)
+
+			// 发送工具结束事件
+			if err := emit("tool_end", map[string]any{
+				"tool_name": call.Function.Name,
+				"call_id":   call.ID,
+				"result":    out,
+			}); err != nil {
+				return err
+			}
+
 			workingMessages = append(workingMessages, Message{
 				Role:       "tool",
 				ToolCallID: call.ID,

@@ -107,6 +107,81 @@ const selectedBackendId = ref('')
 const textareaRef = ref(null)
 const expandedThinking = reactive(new Map())
 
+// 工具调用状态
+const toolCalling = ref(false)
+const toolCallStartTime = ref(0)
+const toolCallingName = ref('')
+
+// 正在努力干活状态(Token超过100ms无输出时显示)
+const workingHard = ref(false)
+let lastOutputTime = 0
+let workingHardTimer = null
+
+// 思考中循环短语
+const thinkingPhrases = [
+  '正在展开认知回路...',
+  '正在同步当前任务世界线...',
+  '推理核心升温中...',
+  '正在装填策略模块...',
+  '正在编译新的思考分支...',
+  '正在校准目标与约束...',
+  '正在重组知识碎片...',
+  '正在加载高维理解补丁...',
+  '正在收束可能性分支...',
+  '正在执行脑内预演...',
+  '正在唤醒备用推理核心...',
+  '正在构建本轮作战方案...',
+  '正在对齐上下文信号...',
+  '正在生成下一阶段决策...',
+  '正在完成逻辑链闭环...'
+]
+const thinkingDonePhrases = [
+  '思考链闭环完成',
+  '认知推理已结束',
+  '思考分支已收敛',
+  '推理链路已确认'
+]
+let thinkingPhraseTimer = null
+const currentThinkingPhrase = ref('')
+
+function startThinkingPhraseCycle() {
+  currentThinkingPhrase.value = thinkingPhrases[Math.floor(Math.random() * thinkingPhrases.length)]
+  if (thinkingPhraseTimer) clearInterval(thinkingPhraseTimer)
+  thinkingPhraseTimer = setInterval(() => {
+    currentThinkingPhrase.value = thinkingPhrases[Math.floor(Math.random() * thinkingPhrases.length)]
+  }, 1000 + Math.random() * 4000) // 1-5秒随机
+}
+
+function stopThinkingPhraseCycle() {
+  if (thinkingPhraseTimer) {
+    clearInterval(thinkingPhraseTimer)
+    thinkingPhraseTimer = null
+  }
+}
+
+function getRandomThinkingDonePhrase() {
+  return thinkingDonePhrases[Math.floor(Math.random() * thinkingDonePhrases.length)]
+}
+
+function startWorkingHardTimer() {
+  lastOutputTime = Date.now()
+  if (workingHardTimer) clearTimeout(workingHardTimer)
+  workingHardTimer = setTimeout(() => {
+    if (!workingHard.value && !toolCalling.value && loading.value) {
+      workingHard.value = true
+    }
+  }, 100)
+}
+
+function resetWorkingHard() {
+  workingHard.value = false
+  if (workingHardTimer) {
+    clearTimeout(workingHardTimer)
+    workingHardTimer = null
+  }
+  lastOutputTime = Date.now()
+}
+
 // 文件上传状态
 const fileInputRef = ref(null)
 const uploading = ref(false)
@@ -600,6 +675,7 @@ async function sendMessage() {
 
   loading.value = true
   startTimer()
+  startWorkingHardTimer()
   streamController = new AbortController()
 
   try {
@@ -640,11 +716,39 @@ async function sendMessage() {
         if (!payload) continue
 
         if (event === 'reasoning') {
+          resetWorkingHard()
+          startWorkingHardTimer()
+          const wasEmpty = !assistant.reasoning
           assistant.reasoning += payload.delta || ''
+          if (wasEmpty && assistant.reasoning) {
+            startThinkingPhraseCycle()
+          }
+          await scrollToBottom()
+        }
+
+        if (event === 'tool_start') {
+          resetWorkingHard()
+          toolCallingName.value = payload.tool_name || ''
+          toolCalling.value = true
+          toolCallStartTime.value = Date.now()
+          await scrollToBottom()
+        }
+
+        if (event === 'tool_end') {
+          resetWorkingHard()
+          // 确保工具提示至少显示2秒
+          const elapsed = Date.now() - toolCallStartTime.value
+          const remaining = Math.max(0, 2000 - elapsed)
+          await new Promise(resolve => setTimeout(resolve, remaining))
+          toolCalling.value = false
+          toolCallingName.value = ''
+          startWorkingHardTimer()
           await scrollToBottom()
         }
 
         if (event === 'content') {
+          resetWorkingHard()
+          startWorkingHardTimer()
           assistant.reasoningDone = true
           assistant.content += payload.delta || ''
           assistant.retrying = null
@@ -652,6 +756,7 @@ async function sendMessage() {
         }
 
         if (event === 'retrying') {
+          resetWorkingHard()
           assistant.retrying = {
             attempt: payload.attempt,
             maxAttempts: payload.max_attempts,
@@ -661,6 +766,7 @@ async function sendMessage() {
         }
 
         if (event === 'error') {
+          resetWorkingHard()
           const msg = payload.message || 'stream error'
           assistant.content += `\n[Error] ${msg}`
           assistant.reasoningDone = true
@@ -671,6 +777,7 @@ async function sendMessage() {
         }
 
         if (event === 'done') {
+          resetWorkingHard()
           assistant.reasoningDone = true
           assistant.thinkingDuration = (Date.now() - assistant.thinkingStartTime) / 1000
           doneReceived = true
@@ -688,6 +795,8 @@ async function sendMessage() {
     assistant.thinkingDuration = (Date.now() - assistant.thinkingStartTime) / 1000
   } finally {
     stopTimer()
+    stopThinkingPhraseCycle()
+    resetWorkingHard()
     loading.value = false
     streamController = null
     await scrollToBottom()
@@ -766,6 +875,7 @@ async function sendMessage() {
           </div>
           <!-- 聊天区域 -->
           <div v-else class="chat-area">
+
             <div v-for="(msg, idx) in messages" :key="idx" class="msg" :class="`msg-${msg.role}`">
               <template v-if="msg.role === 'user'">
                 <div class="user-bubble markdown-body" v-html="renderMarkdown(msg.content)"></div>
@@ -775,14 +885,24 @@ async function sendMessage() {
                   <!-- 排队重试提示 -->
                   <div v-if="msg.retrying" class="retrying-indicator">
                     <span class="retrying-spinner"></span>
+                    <span>LLM服务排队中...</span>
+                  </div>
+                  <!-- 正在努力干活提示(无输出超过100ms且无排队重试) -->
+                  <div v-if="workingHard && !msg.retrying && idx === messages.length - 1" class="working-hard-indicator">
+                    <span class="working-hard-spinner"></span>
                     <span>正在非常努力干活...</span>
+                  </div>
+                  <!-- 工具调用提示 -->
+                  <div v-if="toolCalling" class="tool-calling-indicator">
+                    <span class="tool-calling-spinner"></span>
+                    <span>正在调用工具: {{ toolCallingName || '...' }}</span>
                   </div>
                   <!-- 思考块: 可折叠, 实时计时 -->
                   <div v-if="msg.reasoning" class="thinking-block">
                     <button class="thinking-toggle" @click="toggleThinking(idx)">
                       <span class="thinking-chevron" :class="{ expanded: isThinkingExpanded(idx) }">&#9654;</span>
                       <span class="thinking-label">
-                        Thought for {{ getThinkingDuration(msg) }}
+                        {{ msg.reasoningDone ? getRandomThinkingDonePhrase() : currentThinkingPhrase }} ({{ getThinkingDuration(msg) }})
                       </span>
                     </button>
                     <div v-show="isThinkingExpanded(idx)" class="thinking-content markdown-body" v-html="renderMarkdown(msg.reasoning)"></div>
