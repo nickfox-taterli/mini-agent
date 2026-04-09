@@ -18,6 +18,12 @@ For delivery, return the generated file `local_path` first.
 Do NOT manually construct download URLs.
 If a download URL is required, call MCP tool `convert_local_path_to_url` with `local_path` and use the tool output URL.
 
+**TEMPORARY FILE RULE** - ALL intermediate files MUST be written under `/tmp/`. This includes:
+- Python scripts generated to process data (e.g. `create_*_excel.py`)
+- API response JSON files (e.g. `api_response.json`)
+- Any other scratch/working files that are not the final deliverable
+NEVER write these files in the project directory or under `SKILL_DIR`. Only the final xlsx output goes to `FRONTEND_UPLOAD_DIR`. Use a unique subdirectory like `/tmp/xlsx_task_<timestamp>/` for each task's intermediates.
+
 ## Task Routing
 
 | Task | Method | Guide |

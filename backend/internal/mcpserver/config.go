@@ -54,7 +54,7 @@ func resolveFrontendUploadDir() (string, error) {
 
 // BuildFileURL 根据目录和文件名构建完整的 HTTP URL.
 func BuildFileURL(uploadDir string, filename string) string {
-	// uploadDir: /root/agent/frontend/upload/2026/04/14
+	// uploadDir 是由 resolveFrontendUploadDir 动态解析的路径, 格式: <frontend>/upload/YYYY/MM/DD/
 	// 需要: http://127.0.0.1:18889/upload/2026/04/14/filename
 	frontendDir, err := resolveFrontendDir([]string{
 		filepath.Join("..", "frontend"),

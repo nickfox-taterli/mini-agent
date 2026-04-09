@@ -212,12 +212,12 @@ export function useChatStream(apiBase, renderMarkdown) {
 
           if (event === 'tool_start') {
             resetWorkingHard(); toolCallingName.value = payload.tool_name || ''
-            toolCalling.value = true; toolCallStartTime.value = Date.now(); await scrollToBottom()
+            toolCalling.value = true; toolCallStartTime = Date.now(); await scrollToBottom()
           }
 
           if (event === 'tool_end') {
             resetWorkingHard()
-            const elapsed = Date.now() - toolCallStartTime.value
+            const elapsed = Date.now() - toolCallStartTime
             await new Promise(resolve => setTimeout(resolve, Math.max(0, 2000 - elapsed)))
             toolCalling.value = false; toolCallingName.value = ''
             startWorkingHardTimer(); await scrollToBottom()

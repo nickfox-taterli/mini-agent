@@ -69,7 +69,8 @@ func BuildSystemPrompt(sk []Skill) string {
 		b.WriteString("\n")
 	}
 	b.WriteString("For skill execution, prefer tool `run_skill_bash` with skill_name and command.\n")
-	b.WriteString("For generated files, write directly under FRONTEND_UPLOAD_DIR.\n")
+	b.WriteString("ALL intermediate/temporary files (generated scripts, API responses, JSON data, scratch files) MUST be written under /tmp/ - NEVER in the project directory or under the skill directory.\n")
+	b.WriteString("Only the final deliverable file should be written to FRONTEND_UPLOAD_DIR.\n")
 	b.WriteString("When a file is generated, return the absolute local file path first.\n")
 	b.WriteString("Do NOT guess or construct download URL in natural language.\n")
 	b.WriteString("If you need a downloadable URL, call MCP tool `convert_local_path_to_url` with that file path, then use the tool output URL.\n")

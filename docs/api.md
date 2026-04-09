@@ -183,7 +183,7 @@ SSE 事件:
   "params": {
     "name": "convert_local_path_to_url",
     "arguments": {
-      "local_path": "/root/agent/frontend/upload/2026/04/14/report.xlsx"
+      "local_path": "<project_root>/frontend/upload/2026/04/14/report.xlsx"
     }
   }
 }

@@ -605,6 +605,10 @@ func defaultOpenAITools() []openAITool {
 	convertPathTool.Type = "function"
 	convertPathTool.Function.Name = "convert_local_path_to_url"
 	convertPathTool.Function.Description = "Convert a local file path under frontend directory into a downloadable URL."
+	convertPathExample := "<frontend_upload_dir>/report.xlsx"
+	if uploadDir, err := mcpserver.ResolveFrontendUploadDirExported(); err == nil {
+		convertPathExample = uploadDir + "/report.xlsx"
+	}
 	convertPathTool.Function.Parameters = map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
@@ -612,7 +616,7 @@ func defaultOpenAITools() []openAITool {
 		"properties": map[string]any{
 			"local_path": map[string]any{
 				"type":        "string",
-				"description": "Absolute local file path under frontend directory, for example /root/agent/frontend/upload/2026/04/14/report.xlsx.",
+				"description": "Absolute local file path under frontend directory, for example " + convertPathExample,
 			},
 		},
 	}
