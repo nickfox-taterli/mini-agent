@@ -33,7 +33,7 @@ const expandedThinking = reactive(new Map())
 
 // 文件上传
 const uploading = ref(false)
-const attachedFile = ref(null)
+const attachedFiles = ref([])
 const isDragging = ref(false)
 
 // 快捷键
@@ -73,7 +73,7 @@ function autoResize() {
 // 发送消息包装
 async function handleSend() {
   await sendMessage({
-    input, messages, attachedFile, textareaRef, expandedThinking,
+    input, messages, attachedFiles, textareaRef, expandedThinking,
     saveCurrentMessages: () => saveCurrentMessages(messages),
     generateTitleAsync,
     currentConversationId
@@ -83,9 +83,11 @@ async function handleSend() {
 // 文件上传
 
 async function handleFileSelect(event) {
-  const file = event.target.files?.[0]
-  if (!file) return
-  await uploadFile(file)
+  const files = event.target.files
+  if (!files || files.length === 0) return
+  for (const file of files) {
+    await uploadFile(file)
+  }
   event.target.value = ''
 }
 
@@ -101,14 +103,14 @@ async function uploadFile(file) {
       return
     }
     const data = await res.json()
-    attachedFile.value = { name: file.name, url: data.url }
+    attachedFiles.value.push({ name: file.name, url: data.url })
   } catch (err) { alert(`上传失败: ${err.message}`) } finally { uploading.value = false }
 }
 
-function removeAttachedFile() { attachedFile.value = null }
+function removeAttachedFile(index) { attachedFiles.value.splice(index, 1) }
 function handleDragOver(e) { e.preventDefault(); isDragging.value = true }
 function handleDragLeave(e) { e.preventDefault(); isDragging.value = false }
-async function handleDrop(e) { e.preventDefault(); isDragging.value = false; const file = e.dataTransfer?.files?.[0]; if (file) await uploadFile(file) }
+async function handleDrop(e) { e.preventDefault(); isDragging.value = false; const files = e.dataTransfer?.files; if (files) { for (const file of files) { await uploadFile(file) } } }
 
 // 异步生成标题
 async function generateTitleAsync(convId) {
@@ -253,7 +255,7 @@ onUnmounted(() => {
           <Composer
             :input="input"
             :loading="loading"
-            :attached-file="attachedFile"
+            :attached-files="attachedFiles"
             :uploading="uploading"
             :is-dragging="isDragging"
             :selected-backend-id="selectedBackendId"

@@ -4,12 +4,12 @@
 xlsx_reader.py - Structure discovery and data analysis tool for Excel/CSV files.
 
 Usage:
-    python3 xlsx_reader.py <file>                   # full structure report
-    python3 xlsx_reader.py <file> --sheet Sales     # analyze one sheet
-    python3 xlsx_reader.py <file> --json            # machine-readable output
-    python3 xlsx_reader.py <file> --quality         # data quality audit only
+    python3 xlsx_reader.py <file1> [file2] [file3] ...    # analyze one or more files
+    python3 xlsx_reader.py <file> --sheet Sales          # analyze one sheet
+    python3 xlsx_reader.py <file> --json                  # machine-readable output
+    python3 xlsx_reader.py <file> --quality               # data quality audit only
 
-Supports: .xlsx, .xlsm, .csv, .tsv
+Supports: .xlsx, .xlsm, .xls, .csv, .tsv
 Does NOT modify the source file in any way.
 
 Exit codes:
@@ -56,6 +56,71 @@ def detect_and_load(file_path: str, sheet_name_filter: str | None = None) -> dic
         else:
             return {sheet_name_filter: result}
 
+    elif suffix == ".xls":
+        # Support legacy .xls format using xlrd
+        try:
+            import xlrd
+        except ImportError:
+            raise RuntimeError(
+                ".xls format requires xlrd. Run: pip install xlrd"
+            )
+        
+        workbook = xlrd.open_workbook(file_path)
+        result = {}
+        for sheet_index in range(workbook.nsheets):
+            sheet = workbook.sheet_by_index(sheet_index)
+            sheet_name = sheet.name
+            
+            # Filter by sheet name if specified
+            if sheet_name_filter and sheet_name != sheet_name_filter:
+                continue
+            
+            # Convert xlrd sheet to DataFrame
+            data = []
+            for row_index in range(sheet.nrows):
+                row_data = []
+                for col_index in range(sheet.ncols):
+                    cell = sheet.cell(row_index, col_index)
+                    cell_type = sheet.cell_type(row_index, col_index)
+                    # xlrd cell types: 0=EMPTY, 1=TEXT, 2=NUMBER, 3=DATE, 4=BOOLEAN, 5=ERROR, 6=BLANK
+                    if cell_type == 0:  # EMPTY
+                        value = None
+                    elif cell_type == 1:  # TEXT
+                        value = cell.value
+                    elif cell_type == 2:  # NUMBER
+                        value = cell.value
+                    elif cell_type == 3:  # DATE
+                        # Convert xlrd date to Python datetime
+                        import xlrd.xldate as xldate
+                        try:
+                            value = xldate.xldate_as_datetime(cell.value, workbook.datemode)
+                        except:
+                            value = cell.value
+                    elif cell_type == 4:  # BOOLEAN
+                        value = bool(cell.value)
+                    elif cell_type == 5:  # ERROR
+                        value = f"#ERR{cell.value}#"
+                    elif cell_type == 6:  # BLANK
+                        value = None
+                    else:
+                        value = cell.value
+                    row_data.append(value)
+                data.append(row_data)
+            
+            # Create DataFrame from data
+            if data:
+                # Use first row as header if it looks like a header
+                headers = data[0] if data else []
+                if headers:
+                    df = pd.DataFrame(data[1:], columns=headers)
+                else:
+                    df = pd.DataFrame(data)
+                result[sheet_name] = df
+        
+        if not result and sheet_name_filter:
+            raise ValueError(f"Sheet '{sheet_name_filter}' not found in {file_path}")
+        return result
+
     elif suffix in (".csv", ".tsv"):
         sep = "\t" if suffix == ".tsv" else ","
         encodings = ["utf-8-sig", "gbk", "utf-8", "latin-1"]
@@ -74,16 +139,10 @@ def detect_and_load(file_path: str, sheet_name_filter: str | None = None) -> dic
             f"Last error: {last_error}"
         )
 
-    elif suffix == ".xls":
-        raise ValueError(
-            ".xls is a legacy binary format not supported by this tool. "
-            "Please open the file in Excel and save as .xlsx, then retry."
-        )
-
     else:
         raise ValueError(
             f"Unsupported file format: {suffix}. "
-            "Supported formats: .xlsx, .xlsm, .csv, .tsv"
+            "Supported formats: .xlsx, .xlsm, .xls, .csv, .tsv"
         )
 
 
@@ -155,7 +214,7 @@ def audit_quality(sheets: dict) -> dict:
             })
 
         # Mixed-type object columns (numeric data stored as text)
-        for col in df.select_dtypes(include="object").columns:
+        for col in df.select_dtypes(include=["object", "str"]).columns:
             numeric_converted = pd.to_numeric(df[col], errors="coerce")
             convertible = int(numeric_converted.notna().sum())
             non_null_total = int(df[col].notna().sum())
@@ -229,7 +288,7 @@ def compute_stats(sheets: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Human-readable report rendering
+# Human-readable report rendering (single file)
 # ---------------------------------------------------------------------------
 
 def render_report(
@@ -316,6 +375,65 @@ def render_report(
 
 
 # ---------------------------------------------------------------------------
+# Human-readable report rendering (multi-file)
+# ---------------------------------------------------------------------------
+
+def render_multi_report(results: list) -> str:
+    """Render a combined report for multiple files."""
+    lines = []
+    p = lines.append
+
+    p("=" * 70)
+    p("MULTI-FILE ANALYSIS REPORT")
+    p("=" * 70)
+    p(f"\nAnalyzed {len(results)} file(s):")
+    for r in results:
+        p(f"  - {r['file_name']}")
+    
+    # Summary table
+    p("\n" + "─" * 70)
+    p("SUMMARY TABLE")
+    p("─" * 70)
+    p(f"{'File':<30} {'Sheets':<10} {'Total Rows':<12} {'Issues':<8}")
+    p("─" * 70)
+    
+    total_sheets = 0
+    total_rows = 0
+    total_issues = 0
+    
+    for r in results:
+        file_name = r['file_name']
+        sheets_count = len(r['structure'])
+        rows_count = sum(s["shape"]["rows"] for s in r['structure'].values())
+        issues_count = sum(len(v) for v in r['quality'].values())
+        
+        total_sheets += sheets_count
+        total_rows += rows_count
+        total_issues += issues_count
+        
+        p(f"{file_name:<30} {sheets_count:<10} {rows_count:<12,} {issues_count:<8}")
+    
+    p("─" * 70)
+    p(f"{'TOTAL':<30} {total_sheets:<10} {total_rows:<12,} {total_issues:<8}")
+    p("─" * 70)
+    
+    # Detailed reports for each file
+    for r in results:
+        p("\n\n")
+        report = render_report(r['file_path'], r['structure'], r['quality'], r['stats'])
+        p(report)
+    
+    p("\n" + "=" * 70)
+    if total_issues == 0:
+        p("RESULT: No data quality issues detected across all files.")
+    else:
+        p(f"RESULT: {total_issues} data quality issue(s) found across {len(results)} file(s).")
+    p("=" * 70)
+
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
 
@@ -323,8 +441,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Read and analyze Excel/CSV files without modifying them."
     )
-    parser.add_argument("file", help="Path to .xlsx, .xlsm, .csv, or .tsv file")
-    parser.add_argument("--sheet", help="Analyze a specific sheet only", default=None)
+    parser.add_argument("files", nargs="+", help="Path(s) to .xlsx, .xlsm, .xls, .csv, or .tsv file(s)")
+    parser.add_argument("--sheet", help="Analyze a specific sheet only (applies to first file)", default=None)
     parser.add_argument(
         "--json", action="store_true", help="Output machine-readable JSON"
     )
@@ -332,29 +450,60 @@ def main() -> None:
         "--quality", action="store_true",
         help="Run data quality audit only (skip stats)"
     )
+    parser.add_argument(
+        "--summary", action="store_true",
+        help="Show only summary table (for multi-file analysis)"
+    )
     args = parser.parse_args()
 
-    try:
-        sheets = detect_and_load(args.file, sheet_name_filter=args.sheet)
-    except (FileNotFoundError, ValueError, RuntimeError) as e:
-        print(f"ERROR: {e}", file=sys.stderr)
-        sys.exit(1)
+    # Suppress warnings for cleaner output
+    import warnings
+    warnings.filterwarnings('ignore', category=UserWarning)
+    
+    results = []
+    
+    for file_path in args.files:
+        try:
+            sheets = detect_and_load(file_path, sheet_name_filter=args.sheet)
+        except (FileNotFoundError, ValueError, RuntimeError) as e:
+            print(f"ERROR: {e}", file=sys.stderr)
+            sys.exit(1)
 
-    structure = explore_structure(sheets)
-    quality = audit_quality(sheets)
-    stats = {} if args.quality else compute_stats(sheets)
+        structure = explore_structure(sheets)
+        quality = audit_quality(sheets)
+        stats = {} if args.quality else compute_stats(sheets)
+        
+        results.append({
+            'file_path': file_path,
+            'file_name': Path(file_path).name,
+            'structure': structure,
+            'quality': quality,
+            'stats': stats,
+        })
 
     if args.json:
         output = {
-            "file": args.file,
-            "structure": structure,
-            "quality": quality,
-            "stats": stats,
+            "files": [{
+                "file": r['file_path'],
+                "structure": r['structure'],
+                "quality": r['quality'],
+                "stats": r['stats'],
+            } for r in results],
+            "summary": {
+                "total_files": len(results),
+                "total_sheets": sum(len(r['structure']) for r in results),
+                "total_rows": sum(sum(s["shape"]["rows"] for s in r['structure'].values()) for r in results),
+                "total_quality_issues": sum(len(v) for r in results for v in r['quality'].values()),
+            }
         }
-        # Convert preview records to serializable form (handle non-JSON types)
         print(json.dumps(output, indent=2, ensure_ascii=False, default=str))
+    elif len(results) == 1:
+        # Single file - use detailed report
+        report = render_report(args.files[0], results[0]['structure'], results[0]['quality'], results[0]['stats'])
+        print(report)
     else:
-        report = render_report(args.file, structure, quality, stats)
+        # Multiple files
+        report = render_multi_report(results)
         print(report)
 
 

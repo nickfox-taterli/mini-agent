@@ -1229,6 +1229,9 @@ html {
 
 /* 附件预览条 */
 .attachment-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   padding: 6px 16px 0;
 }
 

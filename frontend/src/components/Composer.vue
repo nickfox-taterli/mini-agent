@@ -12,9 +12,9 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
-  attachedFile: {
-    type: Object,
-    default: null
+  attachedFiles: {
+    type: Array,
+    default: () => []
   },
   uploading: {
     type: Boolean,
@@ -49,7 +49,7 @@ function triggerFileInput() {
   fileInputRef.value?.click()
 }
 
-const canSend = computed(() => (props.input.trim() !== '' || props.attachedFile !== null) && !props.loading)
+const canSend = computed(() => (props.input.trim() !== '' || props.attachedFiles.length > 0) && !props.loading)
 </script>
 
 <template>
@@ -61,6 +61,7 @@ const canSend = computed(() => (props.input.trim() !== '' || props.attachedFile 
       type="file"
       ref="fileInputRef"
       class="file-input-hidden"
+      multiple
       @change="emit('file-select', $event)"
     />
     <button class="attach-btn" @click="triggerFileInput" :disabled="loading || uploading" title="上传文件">
@@ -78,22 +79,22 @@ const canSend = computed(() => (props.input.trim() !== '' || props.attachedFile 
       @keydown.enter.exact.prevent="emit('send')"
     />
     <div class="send-wrapper">
-      <div v-if="!input.trim() && !loading && !attachedFile" class="send-tooltip">请输入你的问题</div>
+      <div v-if="!input.trim() && !loading && attachedFiles.length === 0" class="send-tooltip">请输入你的问题</div>
       <button
         class="send"
         :class="{
-          'send-active': (input.trim() || attachedFile) && !loading,
+          'send-active': (input.trim() || attachedFiles.length > 0) && !loading,
           'send-loading': loading
         }"
-        :disabled="!input.trim() && !attachedFile && !loading"
+        :disabled="!input.trim() && attachedFiles.length === 0 && !loading"
         @click="emit('send')"
       >
         <!-- 空状态: 暗淡箭头 -->
-        <svg v-if="!input.trim() && !attachedFile && !loading" width="18" height="18" viewBox="0 0 18 18" fill="none">
+        <svg v-if="!input.trim() && attachedFiles.length === 0 && !loading" width="18" height="18" viewBox="0 0 18 18" fill="none">
           <path d="M9 14V4M9 4L4.5 8.5M9 4L13.5 8.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
         <!-- 有输入: 点亮箭头 -->
-        <svg v-else-if="(input.trim() || attachedFile) && !loading" width="18" height="18" viewBox="0 0 18 18" fill="none">
+        <svg v-else-if="(input.trim() || attachedFiles.length > 0) && !loading" width="18" height="18" viewBox="0 0 18 18" fill="none">
           <path d="M9 14V4M9 4L4.5 8.5M9 4L13.5 8.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
         <!-- 加载中: 停止图标 -->
@@ -104,17 +105,17 @@ const canSend = computed(() => (props.input.trim() !== '' || props.attachedFile 
     </div>
   </div>
   <!-- 附件预览 -->
-  <div v-if="attachedFile || uploading" class="attachment-bar">
+  <div v-if="attachedFiles.length > 0 || uploading" class="attachment-bar">
     <div v-if="uploading" class="attachment-chip">
       <span class="attachment-spinner"></span>
       <span>上传中...</span>
     </div>
-    <div v-else class="attachment-chip">
+    <div v-for="(file, index) in attachedFiles" :key="index" class="attachment-chip">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/><polyline points="13 2 13 9 20 9"/>
       </svg>
-      <span class="attachment-name">{{ attachedFile?.name }}</span>
-      <button class="attachment-remove" @click="emit('remove-attached')" title="移除附件">&times;</button>
+      <span class="attachment-name">{{ file.name }}</span>
+      <button class="attachment-remove" @click="emit('remove-attached', index)" title="移除附件">&times;</button>
     </div>
   </div>
   <div class="meta">

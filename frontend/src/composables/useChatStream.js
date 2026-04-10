@@ -140,9 +140,9 @@ export function useChatStream(apiBase, renderMarkdown) {
       .map((m) => ({ role: m.role, content: m.content }))
   }
 
-  async function sendMessage({ input, messages, attachedFile, textareaRef, expandedThinking, saveCurrentMessages, generateTitleAsync, currentConversationId }) {
+  async function sendMessage({ input, messages, attachedFiles, textareaRef, expandedThinking, saveCurrentMessages, generateTitleAsync, currentConversationId }) {
     if (loading.value) { stopGeneration(); return }
-    if (!input.value.trim() && !attachedFile.value) return
+    if (!input.value.trim() && attachedFiles.value.length === 0) return
 
     const userText = input.value.trim()
     input.value = ''
@@ -150,9 +150,11 @@ export function useChatStream(apiBase, renderMarkdown) {
     if (textareaRef.value) textareaRef.value.style.height = 'auto'
 
     let finalText = userText
-    if (attachedFile.value) {
-      finalText += `\n\n[附件: ${attachedFile.value.name}](${attachedFile.value.url})`
-      attachedFile.value = null
+    if (attachedFiles.value.length > 0) {
+      for (const file of attachedFiles.value) {
+        finalText += `\n\n[附件: ${file.name}](${file.url})`
+      }
+      attachedFiles.value = []
     }
 
     const userMsg = reactive({

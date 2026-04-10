@@ -28,3 +28,4 @@ backend/logs/backend.log
 backend/agent-chat
 test-*.png
 *.log
+*.xlsx
