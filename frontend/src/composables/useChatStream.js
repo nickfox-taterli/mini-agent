@@ -8,7 +8,7 @@ const THINKING_PHRASES = [
   '正在执行脑内预演...', '正在唤醒备用推理核心...', '正在构建本轮作战方案...',
   '正在对齐上下文信号...', '正在生成下一阶段决策...', '正在完成逻辑链闭环...'
 ]
-const THINKING_DONE_PHRASES = ['思考链闭环完成', '认知推理已结束', '思考分支已收敛', '推理链路已确认']
+const THINKING_DONE_PHRASES = ['大功告成']
 
 export function useChatStream(apiBase, renderMarkdown) {
   // 状态

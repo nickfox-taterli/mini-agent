@@ -122,6 +122,123 @@ SSE 事件:
 - 默认日志文件: `backend/logs/backend.log`
 - 每次请求记录 `trace_id`, `status`, `busy`, `upstream_request_id`.
 
+## GET /api/conversations
+
+用途: 列出所有会话 (不含消息), 按创建时间降序.
+
+响应示例:
+
+```json
+{
+  "conversations": [
+    {
+      "id": "conv-1713062400000-abc123",
+      "title": "你好",
+      "createdAt": 1713062400000
+    }
+  ]
+}
+```
+
+## POST /api/conversations
+
+用途: 创建新会话.
+
+请求体:
+
+```json
+{
+  "id": "conv-1713062400000-abc123",
+  "title": "新对话",
+  "createdAt": 1713062400000,
+  "messages": []
+}
+```
+
+字段约束:
+
+- `id`: 必填, 前端生成的唯一标识
+- `title`: 可选, 默认 "新对话"
+- `createdAt`: 可选, Unix 毫秒时间戳
+- `messages`: 可选, 初始消息列表
+
+响应示例:
+
+```json
+{
+  "conversation": {
+    "id": "conv-1713062400000-abc123",
+    "title": "新对话",
+    "createdAt": 1713062400000,
+    "messages": []
+  }
+}
+```
+
+## GET /api/conversations/:id
+
+用途: 获取单个会话详情 (含全部消息).
+
+响应示例:
+
+```json
+{
+  "conversation": {
+    "id": "conv-1713062400000-abc123",
+    "title": "你好",
+    "createdAt": 1713062400000,
+    "messages": [
+      {
+        "role": "user",
+        "content": "你好",
+        "reasoning": "",
+        "reasoningDone": false,
+        "thinkingDuration": null
+      },
+      {
+        "role": "assistant",
+        "content": "你好! 有什么可以帮助你的?",
+        "reasoning": "用户在打招呼...",
+        "reasoningDone": true,
+        "thinkingDuration": 1.23
+      }
+    ]
+  }
+}
+```
+
+## PUT /api/conversations/:id
+
+用途: 更新会话 (标题 + 消息全量替换).
+
+请求体:
+
+```json
+{
+  "title": "新的对话标题",
+  "messages": [
+    {"role": "user", "content": "你好"},
+    {"role": "assistant", "content": "你好!", "reasoningDone": true}
+  ]
+}
+```
+
+响应示例:
+
+```json
+{"ok": true}
+```
+
+## DELETE /api/conversations/:id
+
+用途: 删除会话及其全部消息.
+
+响应示例:
+
+```json
+{"ok": true}
+```
+
 ## MCP: /api/mcp
 
 用途: MCP Streamable HTTP 入口. 当前内置工具:

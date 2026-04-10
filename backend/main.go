@@ -9,6 +9,7 @@ import (
 
 	"taterli-agent-chat/backend/internal/backend"
 	"taterli-agent-chat/backend/internal/config"
+	"taterli-agent-chat/backend/internal/db"
 	"taterli-agent-chat/backend/internal/mcpserver"
 	"taterli-agent-chat/backend/internal/server"
 )
@@ -33,6 +34,13 @@ func main() {
 	}
 
 	mcpserver.InitConfig(cfg.Server.FrontendURL)
+
+	// 初始化 SQLite 数据库
+	dbPath := filepath.Join("data", "chat.db")
+	if err := db.Init(dbPath); err != nil {
+		log.Fatalf("init database: %v", err)
+	}
+	log.Printf("database initialized: %s", dbPath)
 
 	srv := server.New(manager, cfg.Server.Host, cfg.Server.Port, cfg.Server.FrontendURL)
 	log.Printf("backend listening on http://%s:%d, log_file=%s", cfg.Server.Host, cfg.Server.Port, logPath)

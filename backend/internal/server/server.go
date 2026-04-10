@@ -17,6 +17,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"taterli-agent-chat/backend/internal/backend"
+	"taterli-agent-chat/backend/internal/db"
 	"taterli-agent-chat/backend/internal/mcpserver"
 )
 
@@ -37,7 +38,7 @@ func New(m *backend.Manager, host string, port int, frontendURL string) *Server 
 	r := gin.Default()
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"*"},
-		AllowMethods:     []string{"GET", "POST", "OPTIONS"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"*"},
 		ExposeHeaders:    []string{"Content-Type"},
 		AllowCredentials: false,
@@ -72,6 +73,13 @@ func (s *Server) mountRoutes() {
 	// 静态文件服务: /upload/*filepath -> frontend/upload/
 	s.r.GET("/upload/*filepath", s.handleServeUpload)
 	s.r.HEAD("/upload/*filepath", s.handleServeUpload)
+
+	// 会话管理 API
+	s.r.GET("/api/conversations", s.handleListConversations)
+	s.r.POST("/api/conversations", s.handleCreateConversation)
+	s.r.GET("/api/conversations/:id", s.handleGetConversation)
+	s.r.PUT("/api/conversations/:id", s.handleUpdateConversation)
+	s.r.DELETE("/api/conversations/:id", s.handleDeleteConversation)
 
 	mcpHandler := gin.WrapH(mcpserver.NewHTTPHandler())
 	s.r.Any("/api/mcp", mcpHandler)
@@ -247,4 +255,115 @@ func validRole(role string) bool {
 	default:
 		return false
 	}
+}
+
+// handleListConversations 列出所有会话 (不含消息).
+func (s *Server) handleListConversations(c *gin.Context) {
+	convs, err := db.ListConversations()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"conversations": convs})
+}
+
+// handleCreateConversation 创建新会话.
+func (s *Server) handleCreateConversation(c *gin.Context) {
+	var req struct {
+		ID        string   `json:"id"`
+		Title     string   `json:"title"`
+		CreatedAt int64    `json:"createdAt"`
+		Messages  []db.Msg `json:"messages"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+	if req.ID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "id is required"})
+		return
+	}
+	if req.Title == "" {
+		req.Title = "新对话"
+	}
+	if req.CreatedAt == 0 {
+		req.CreatedAt = 0
+	}
+	conv := &db.Conversation{
+		ID:        req.ID,
+		Title:     req.Title,
+		CreatedAt: req.CreatedAt,
+		Messages:  req.Messages,
+	}
+	if conv.Messages == nil {
+		conv.Messages = []db.Msg{}
+	}
+	if err := db.CreateConversation(conv); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"conversation": conv})
+}
+
+// handleGetConversation 获取单个会话详情 (含消息).
+func (s *Server) handleGetConversation(c *gin.Context) {
+	id := c.Param("id")
+	conv, err := db.GetConversation(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if conv == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "conversation not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"conversation": conv})
+}
+
+// handleUpdateConversation 更新会话 (标题 + 消息).
+func (s *Server) handleUpdateConversation(c *gin.Context) {
+	id := c.Param("id")
+	var req struct {
+		Title    string   `json:"title"`
+		Messages []db.Msg `json:"messages"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+
+	// 检查会话是否存在
+	conv, err := db.GetConversation(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if conv == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "conversation not found"})
+		return
+	}
+
+	if req.Title != "" {
+		if err := db.UpdateConversation(id, req.Title); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+	}
+	if req.Messages != nil {
+		if err := db.SaveMessages(id, req.Messages); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// handleDeleteConversation 删除会话.
+func (s *Server) handleDeleteConversation(c *gin.Context) {
+	id := c.Param("id")
+	if err := db.DeleteConversation(id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
 }

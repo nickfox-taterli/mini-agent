@@ -16,7 +16,12 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['toggle', 'new-chat', 'select-conversation'])
+const emit = defineEmits(['toggle', 'new-chat', 'select-conversation', 'delete-conversation'])
+
+function handleDelete(e, id) {
+  e.stopPropagation()
+  emit('delete-conversation', id)
+}
 
 const sortedConversations = computed(() => {
   return [...props.conversations].sort((a, b) => b.createdAt - a.createdAt)
@@ -54,7 +59,7 @@ const sortedConversations = computed(() => {
         <span>历史会话</span>
       </div>
       <div class="history-list">
-        <button
+        <div
           v-for="conv in sortedConversations"
           :key="conv.id"
           class="history-item"
@@ -62,7 +67,12 @@ const sortedConversations = computed(() => {
           @click="emit('select-conversation', conv.id)"
         >
           <span class="history-title">{{ conv.title }}</span>
-        </button>
+          <button class="history-delete" @click="handleDelete($event, conv.id)" title="删除会话">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M2.5 2.5L9.5 9.5M9.5 2.5L2.5 9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
 

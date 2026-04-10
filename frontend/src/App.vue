@@ -15,8 +15,9 @@ const { renderMarkdown, copyCode } = useMarkdown()
 const {
   conversations, currentConversationId, sidebarOpen, sortedConversations,
   loadConversations, loadSidebarState, createNewConversation,
-  switchConversation, saveCurrentMessages, loadLatestConversation, toggleSidebar
-} = useConversations(renderMarkdown)
+  switchConversation, saveCurrentMessages, deleteConversation,
+  loadLatestConversation, toggleSidebar
+} = useConversations(renderMarkdown, apiBase)
 
 const {
   loading, toolCalling, toolCallingName, workingHard, currentThinkingPhrase,
@@ -31,7 +32,6 @@ const textareaRef = ref(null)
 const expandedThinking = reactive(new Map())
 
 // 文件上传
-const fileInputRef = ref(null)
 const uploading = ref(false)
 const attachedFile = ref(null)
 const isDragging = ref(false)
@@ -40,8 +40,21 @@ const isDragging = ref(false)
 function handleKeydown(e) {
   if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
     e.preventDefault()
-    createNewConversation(messages, expandedThinking)
+    handleNewChat()
   }
+}
+
+// 会话操作包装 (避免模板中 ref 自动解包问题)
+function handleNewChat() {
+  createNewConversation(messages, expandedThinking)
+}
+
+function handleSelectConversation(id) {
+  switchConversation(id, messages, expandedThinking)
+}
+
+function handleDeleteConversation(id) {
+  deleteConversation(id, messages, expandedThinking)
 }
 
 // 思考展开/折叠
@@ -68,7 +81,6 @@ async function handleSend() {
 }
 
 // 文件上传
-function triggerFileInput() { if (fileInputRef.value) fileInputRef.value.click() }
 
 async function handleFileSelect(event) {
   const file = event.target.files?.[0]
@@ -102,13 +114,14 @@ async function handleDrop(e) { e.preventDefault(); isDragging.value = false; con
 async function generateTitleAsync(convId) {
   const conv = conversations.value.find(c => c.id === convId)
   if (!conv) return
-  if (conv.title !== extractTitle(conv.messages)) return
-  if (!conv.messages.some(m => m.role === 'user')) return
+  if (conv.title !== '新对话') return
+  const userMsgs = messages.value.filter(m => m.role === 'user')
+  if (userMsgs.length === 0) return
 
   try {
     const titleMessages = [
       { role: 'system', content: '你是一个标题生成器. 请根据用户的消息内容, 用中文生成一个简短的对话标题 (不超过20个字). 只输出标题文本, 不要加引号, 不要加句号, 不要加任何额外说明.' },
-      { role: 'user', content: conv.messages.filter(m => m.role === 'user').slice(0, 2).map(m => m.content).join('\n') }
+      { role: 'user', content: userMsgs.slice(0, 2).map(m => m.content).join('\n') }
     ]
 
     const res = await fetch(`${apiBase}/api/chat/stream`, {
@@ -174,7 +187,7 @@ function parseSSEBlock(block) {
 // 初始化
 onMounted(async () => {
   loadSidebarState()
-  loadConversations()
+  await loadConversations()
   document.addEventListener('keydown', handleKeydown)
 
   if (conversations.value.length === 0) {
@@ -199,11 +212,18 @@ onUnmounted(() => {
       :current-conversation-id="currentConversationId"
       :sidebar-open="sidebarOpen"
       @toggle="toggleSidebar"
-      @new-chat="createNewConversation(messages, expandedThinking)"
-      @select-conversation="switchConversation($event, messages, expandedThinking)"
+      @new-chat="handleNewChat"
+      @select-conversation="handleSelectConversation"
+      @delete-conversation="handleDeleteConversation"
     />
 
-    <div class="main-area">
+    <div
+      class="main-area"
+      :class="{ 'main-dragover': isDragging }"
+      @dragover="handleDragOver"
+      @dragleave="handleDragLeave"
+      @drop="handleDrop"
+    >
       <div class="page">
         <div class="panel">
           <EmptyState v-if="messages.length === 0" />
@@ -240,12 +260,8 @@ onUnmounted(() => {
             :api-base="apiBase"
             @update:input="input = $event"
             @send="handleSend"
-            @attach="triggerFileInput"
             @file-select="handleFileSelect"
             @remove-attached="removeAttachedFile"
-            @dragover="handleDragOver"
-            @dragleave="handleDragLeave"
-            @drop="handleDrop"
           />
         </div>
       </div>

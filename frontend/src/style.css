@@ -202,7 +202,8 @@ html {
 }
 
 .history-item {
-  display: block;
+  display: flex;
+  align-items: center;
   width: 100%;
   text-align: left;
   padding: 10px 16px;
@@ -213,6 +214,7 @@ html {
   font-family: var(--font-sans);
   cursor: pointer;
   transition: background 0.12s;
+  position: relative;
 }
 
 .history-item:hover {
@@ -230,6 +232,33 @@ html {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.history-delete {
+  flex-shrink: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 4px;
+  cursor: pointer;
+  margin-left: 4px;
+  transition: background 0.12s, color 0.12s;
+}
+
+.history-item:hover .history-delete {
+  display: flex;
+}
+
+.history-delete:hover {
+  background: rgba(255, 80, 80, 0.15);
+  color: #ff5050;
 }
 
 /* ===== Sidebar Footer ===== */
@@ -320,6 +349,21 @@ html {
   overflow: hidden;
   position: relative;
   min-width: 0;
+}
+
+.main-dragover {
+  outline: 2px dashed var(--accent);
+  outline-offset: -8px;
+  background: color-mix(in srgb, var(--accent) 5%, var(--bg-primary));
+}
+
+.main-dragover::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  pointer-events: none;
+  z-index: 50;
 }
 
 /* ===== Page Layout ===== */

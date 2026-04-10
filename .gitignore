@@ -25,3 +25,6 @@ AGENTS.md
 CLAUDE.md
 backend/logs/backend.log
 .playwright-mcp/
+backend/agent-chat
+test-*.png
+*.log
