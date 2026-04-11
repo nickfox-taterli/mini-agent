@@ -34,6 +34,7 @@ func main() {
 	}
 
 	mcpserver.InitConfig(cfg.Server.FrontendURL)
+	mcpserver.InitMiniMaxTools(cfg.MinimaxTools.APIKeys, cfg.MinimaxTools.APIHost)
 
 	// 初始化 SQLite 数据库
 	dbPath := filepath.Join("data", "chat.db")

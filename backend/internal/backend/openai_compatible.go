@@ -621,7 +621,44 @@ func defaultOpenAITools() []openAITool {
 		},
 	}
 
-	return []openAITool{timeTool, runSkillBashTool, webFetchTool, convertPathTool}
+
+	webSearchTool := openAITool{}
+	webSearchTool.Type = "function"
+	webSearchTool.Function.Name = "minimax_web_search"
+	webSearchTool.Function.Description = "Search the web using MiniMax search API. Returns titles, URLs and snippets. Aim for 3-5 keywords for best results. For time-sensitive topics, include the current date."
+	webSearchTool.Function.Parameters = map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"query"},
+		"properties": map[string]any{
+			"query": map[string]any{
+				"type":        "string",
+				"description": "Search query, 3-5 keywords for best results.",
+			},
+		},
+	}
+
+	imageTool := openAITool{}
+	imageTool.Type = "function"
+	imageTool.Function.Name = "minimax_understand_image"
+	imageTool.Function.Description = "Analyze and understand an image using MiniMax vision model. Provide image URL or local file path and a prompt describing what to analyze. Supports JPEG, PNG, WebP formats."
+	imageTool.Function.Parameters = map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"image_url", "prompt"},
+		"properties": map[string]any{
+			"image_url": map[string]any{
+				"type":        "string",
+				"description": "Image URL (http/https) or absolute local file path to analyze.",
+			},
+			"prompt": map[string]any{
+				"type":        "string",
+				"description": "What to analyze or describe about the image.",
+			},
+		},
+	}
+
+	return []openAITool{timeTool, runSkillBashTool, webFetchTool, convertPathTool, webSearchTool, imageTool}
 }
 
 func logUpstreamRequest(traceID string, backendID string, round int, payload openAIStreamReq, tools []openAITool, rawBody []byte) {

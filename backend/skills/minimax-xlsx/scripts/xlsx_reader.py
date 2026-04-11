@@ -20,7 +20,13 @@ Exit codes:
 import sys
 import json
 import argparse
+import warnings
 from pathlib import Path
+
+# Suppress warnings
+warnings.filterwarnings('ignore', category=UserWarning)
+
+import pandas as pd
 
 
 # ---------------------------------------------------------------------------
@@ -60,13 +66,15 @@ def detect_and_load(file_path: str, sheet_name_filter: str | None = None) -> dic
         # Support legacy .xls format using xlrd
         try:
             import xlrd
+            import xlrd.xldate as xldate
         except ImportError:
             raise RuntimeError(
-                ".xls format requires xlrd. Run: pip install xlrd"
+                ".xls format requires xlrd. Run: pip install xlrd==1.2.0"
             )
         
         workbook = xlrd.open_workbook(file_path)
         result = {}
+        
         for sheet_index in range(workbook.nsheets):
             sheet = workbook.sheet_by_index(sheet_index)
             sheet_name = sheet.name
@@ -86,12 +94,10 @@ def detect_and_load(file_path: str, sheet_name_filter: str | None = None) -> dic
                     if cell_type == 0:  # EMPTY
                         value = None
                     elif cell_type == 1:  # TEXT
-                        value = cell.value
+                        value = str(cell.value)
                     elif cell_type == 2:  # NUMBER
                         value = cell.value
                     elif cell_type == 3:  # DATE
-                        # Convert xlrd date to Python datetime
-                        import xlrd.xldate as xldate
                         try:
                             value = xldate.xldate_as_datetime(cell.value, workbook.datemode)
                         except:
@@ -99,7 +105,7 @@ def detect_and_load(file_path: str, sheet_name_filter: str | None = None) -> dic
                     elif cell_type == 4:  # BOOLEAN
                         value = bool(cell.value)
                     elif cell_type == 5:  # ERROR
-                        value = f"#ERR{cell.value}#"
+                        value = f"#ERR{int(cell.value)}#"
                     elif cell_type == 6:  # BLANK
                         value = None
                     else:
@@ -109,13 +115,15 @@ def detect_and_load(file_path: str, sheet_name_filter: str | None = None) -> dic
             
             # Create DataFrame from data
             if data:
-                # Use first row as header if it looks like a header
+                # Use first row as header
                 headers = data[0] if data else []
                 if headers:
                     df = pd.DataFrame(data[1:], columns=headers)
                 else:
                     df = pd.DataFrame(data)
                 result[sheet_name] = df
+            else:
+                result[sheet_name] = pd.DataFrame()
         
         if not result and sheet_name_filter:
             raise ValueError(f"Sheet '{sheet_name_filter}' not found in {file_path}")
@@ -127,9 +135,7 @@ def detect_and_load(file_path: str, sheet_name_filter: str | None = None) -> dic
         last_error = None
         for enc in encodings:
             try:
-                import pandas as pd
                 df = pd.read_csv(file_path, sep=sep, encoding=enc)
-                df._reader_encoding = enc  # attach metadata (non-standard, for reporting)
                 return {path.stem: df}
             except (UnicodeDecodeError, Exception) as e:
                 last_error = e
@@ -157,6 +163,16 @@ def explore_structure(sheets: dict) -> dict:
     """
     result = {}
     for sheet_name, df in sheets.items():
+        if df.empty:
+            result[sheet_name] = {
+                "shape": {"rows": 0, "cols": 0},
+                "columns": [],
+                "dtypes": {},
+                "null_columns": {},
+                "preview": [],
+            }
+            continue
+            
         null_counts = df.isnull().sum()
         null_info = {
             col: {"count": int(cnt), "pct": round(cnt / max(len(df), 1) * 100, 1)}
@@ -164,9 +180,9 @@ def explore_structure(sheets: dict) -> dict:
             if cnt > 0
         }
         result[sheet_name] = {
-            "shape": {"rows": df.shape[0], "cols": df.shape[1]},
-            "columns": list(df.columns),
-            "dtypes": {col: str(dtype) for col, dtype in df.dtypes.items()},
+            "shape": {"rows": int(df.shape[0]), "cols": int(df.shape[1])},
+            "columns": [str(c) for c in df.columns],
+            "dtypes": {str(col): str(dtype) for col, dtype in df.dtypes.items()},
             "null_columns": null_info,
             "preview": df.head(5).to_dict(orient="records"),
         }
@@ -188,6 +204,11 @@ def audit_quality(sheets: dict) -> dict:
     for sheet_name, df in sheets.items():
         sheet_findings = []
 
+        # Skip empty dataframes
+        if df.empty:
+            findings[sheet_name] = sheet_findings
+            continue
+
         # Null values
         null_counts = df.isnull().sum()
         for col, cnt in null_counts.items():
@@ -195,13 +216,12 @@ def audit_quality(sheets: dict) -> dict:
                 pct = round(cnt / max(len(df), 1) * 100, 1)
                 sheet_findings.append({
                     "type": "null_values",
-                    "column": col,
+                    "column": str(col),
                     "count": int(cnt),
                     "pct": pct,
                     "note": f"Column '{col}' has {cnt} null values ({pct}%). "
                             "If this column contains Excel formulas, null values may "
-                            "indicate that the formula cache has not been populated "
-                            "(file was never opened in Excel after the formulas were written)."
+                            "indicate that the formula cache has not been populated."
                 })
 
         # Duplicate rows
@@ -214,56 +234,70 @@ def audit_quality(sheets: dict) -> dict:
             })
 
         # Mixed-type object columns (numeric data stored as text)
-        for col in df.select_dtypes(include=["object", "str"]).columns:
-            numeric_converted = pd.to_numeric(df[col], errors="coerce")
-            convertible = int(numeric_converted.notna().sum())
-            non_null_total = int(df[col].notna().sum())
-            if 0 < convertible < non_null_total:
-                sheet_findings.append({
-                    "type": "mixed_type",
-                    "column": col,
-                    "convertible_to_numeric": convertible,
-                    "non_convertible": non_null_total - convertible,
-                    "note": f"Column '{col}' appears to contain mixed types: "
-                            f"{convertible} values can be parsed as numbers, "
-                            f"{non_null_total - convertible} cannot. "
-                            "Use pd.to_numeric(df[col], errors='coerce') to unify."
-                })
+        try:
+            obj_cols = df.select_dtypes(include=["object", "str"]).columns
+            for col in obj_cols:
+                col_data = df[col].dropna()
+                if len(col_data) == 0:
+                    continue
+                try:
+                    numeric_converted = pd.to_numeric(col_data, errors="coerce")
+                    convertible = int(numeric_converted.notna().sum())
+                    non_null_total = int(col_data.notna().sum())
+                    if 0 < convertible < non_null_total:
+                        sheet_findings.append({
+                            "type": "mixed_type",
+                            "column": str(col),
+                            "convertible_to_numeric": convertible,
+                            "non_convertible": non_null_total - convertible,
+                            "note": f"Column '{col}' appears to contain mixed types: "
+                                    f"{convertible} values can be parsed as numbers, "
+                                    f"{non_null_total - convertible} cannot."
+                        })
+                except (TypeError, ValueError):
+                    pass
+        except Exception:
+            pass
 
         # Year column formatting (e.g., 2024.0 stored as float)
-        for col in df.select_dtypes(include="number").columns:
-            col_lower = str(col).lower()
-            # "年" is the Chinese character for "year" - detect year columns in CJK spreadsheets
-            if "year" in col_lower or "yr" in col_lower or "年" in col_lower:
-                if df[col].dropna().between(1900, 2200).all():
-                    if df[col].dtype == float:
-                        sheet_findings.append({
-                            "type": "year_as_float",
-                            "column": col,
-                            "note": f"Column '{col}' appears to be a year column stored as float "
-                                    "(e.g., 2024.0). Convert with df[col].astype(int).astype(str) "
-                                    "to get clean year strings like '2024'."
-                        })
+        try:
+            num_cols = df.select_dtypes(include="number").columns
+            for col in num_cols:
+                col_lower = str(col).lower()
+                if "year" in col_lower or "yr" in col_lower or "年" in col_lower:
+                    col_data = df[col].dropna()
+                    if len(col_data) > 0 and col_data.between(1900, 2200).all():
+                        if df[col].dtype == float:
+                            sheet_findings.append({
+                                "type": "year_as_float",
+                                "column": str(col),
+                                "note": f"Column '{col}' appears to be a year column stored as float."
+                            })
+        except Exception:
+            pass
 
         # Outliers via IQR on numeric columns
-        for col in df.select_dtypes(include="number").columns:
-            series = df[col].dropna()
-            if len(series) < 4:
-                continue
-            Q1, Q3 = series.quantile(0.25), series.quantile(0.75)
-            IQR = Q3 - Q1
-            if IQR == 0:
-                continue
-            outlier_mask = (df[col] < Q1 - 1.5 * IQR) | (df[col] > Q3 + 1.5 * IQR)
-            outlier_count = int(outlier_mask.sum())
-            if outlier_count > 0:
-                sheet_findings.append({
-                    "type": "outliers_iqr",
-                    "column": col,
-                    "count": outlier_count,
-                    "note": f"Column '{col}' has {outlier_count} potential outlier(s) "
-                            f"(outside 1.5×IQR bounds: [{Q1 - 1.5*IQR:.2f}, {Q3 + 1.5*IQR:.2f}])."
-                })
+        try:
+            num_cols = df.select_dtypes(include="number").columns
+            for col in num_cols:
+                series = df[col].dropna()
+                if len(series) < 4:
+                    continue
+                Q1, Q3 = series.quantile(0.25), series.quantile(0.75)
+                IQR = Q3 - Q1
+                if IQR == 0:
+                    continue
+                outlier_mask = (df[col] < Q1 - 1.5 * IQR) | (df[col] > Q3 + 1.5 * IQR)
+                outlier_count = int(outlier_mask.sum())
+                if outlier_count > 0:
+                    sheet_findings.append({
+                        "type": "outliers_iqr",
+                        "column": str(col),
+                        "count": outlier_count,
+                        "note": f"Column '{col}' has {outlier_count} potential outlier(s)."
+                    })
+        except Exception:
+            pass
 
         findings[sheet_name] = sheet_findings
 
@@ -278,12 +312,18 @@ def compute_stats(sheets: dict) -> dict:
     """Compute descriptive statistics for numeric columns per sheet."""
     stats = {}
     for sheet_name, df in sheets.items():
-        numeric_df = df.select_dtypes(include="number")
-        if numeric_df.empty:
+        if df.empty:
             stats[sheet_name] = {}
             continue
-        desc = numeric_df.describe().round(4)
-        stats[sheet_name] = desc.to_dict()
+        try:
+            numeric_df = df.select_dtypes(include="number")
+            if numeric_df.empty:
+                stats[sheet_name] = {}
+                continue
+            desc = numeric_df.describe().round(4)
+            stats[sheet_name] = desc.to_dict()
+        except Exception:
+            stats[sheet_name] = {}
     return stats
 
 
@@ -297,6 +337,8 @@ def render_report(
     quality: dict,
     stats: dict,
 ) -> str:
+    import pandas as pd
+    
     lines = []
     p = lines.append
 
@@ -315,34 +357,35 @@ def render_report(
         p(f"Sheet: {sheet_name}")
         p(f"{'─' * 50}")
         p(f"  Size: {info['shape']['rows']:,} rows × {info['shape']['cols']} cols")
-        p(f"  Columns: {info['columns']}")
+        
+        if info['columns']:
+            p(f"  Columns: {info['columns'][:10]}{'...' if len(info['columns']) > 10 else ''}")
 
         # Data types
-        p("\n  Column types:")
-        for col, dtype in info["dtypes"].items():
-            p(f"    {col}: {dtype}")
+        if info["dtypes"]:
+            p("\n  Column types:")
+            for col, dtype in list(info["dtypes"].items())[:10]:
+                p(f"    {col}: {dtype}")
+            if len(info["dtypes"]) > 10:
+                p(f"    ... and {len(info['dtypes']) - 10} more columns")
 
         # Nulls
         if info["null_columns"]:
             p("\n  Null values (columns with nulls only):")
             for col, null_info in info["null_columns"].items():
                 p(f"    {col}: {null_info['count']} nulls ({null_info['pct']}%)")
-        else:
-            p("\n  Null values: none")
 
         # Stats
         sheet_stats = stats.get(sheet_name, {})
         if sheet_stats:
             p("\n  Numeric column statistics:")
             numeric_cols = list(sheet_stats.keys())
-            # Show only first 6 to keep report readable
             for col in numeric_cols[:6]:
                 col_stats = sheet_stats[col]
-                p(f"    {col}:")
-                p(f"      count={col_stats.get('count', 'N/A')}  "
-                  f"mean={col_stats.get('mean', 'N/A')}  "
-                  f"min={col_stats.get('min', 'N/A')}  "
-                  f"max={col_stats.get('max', 'N/A')}")
+                p(f"    {col}: count={col_stats.get('count', 'N/A')}, "
+                  f"mean={col_stats.get('mean', 'N/A'):.2f}, "
+                  f"min={col_stats.get('min', 'N/A'):.2f}, "
+                  f"max={col_stats.get('max', 'N/A'):.2f}")
             if len(numeric_cols) > 6:
                 p(f"    ... and {len(numeric_cols) - 6} more numeric columns")
 
@@ -358,7 +401,6 @@ def render_report(
         # Preview
         if info["preview"]:
             p("\n  Preview (first 3 rows):")
-            import pandas as pd
             preview_df = pd.DataFrame(info["preview"][:3])
             for line in preview_df.to_string(index=False).splitlines():
                 p(f"    {line}")
@@ -368,7 +410,7 @@ def render_report(
     if quality_issue_count == 0:
         p("RESULT: No data quality issues detected.")
     else:
-        p(f"RESULT: {quality_issue_count} data quality issue(s) found. See details above.")
+        p(f"RESULT: {quality_issue_count} data quality issue(s) found.")
     p("=" * 60)
 
     return "\n".join(lines)
@@ -380,6 +422,8 @@ def render_report(
 
 def render_multi_report(results: list) -> str:
     """Render a combined report for multiple files."""
+    import pandas as pd
+    
     lines = []
     p = lines.append
 
@@ -455,10 +499,6 @@ def main() -> None:
         help="Show only summary table (for multi-file analysis)"
     )
     args = parser.parse_args()
-
-    # Suppress warnings for cleaner output
-    import warnings
-    warnings.filterwarnings('ignore', category=UserWarning)
     
     results = []
     

@@ -2,14 +2,22 @@ package mcpserver
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
 // frontendURL 是前端基础 URL, 由 InitConfig 在启动时设置.
 // 工具函数使用此值将本地文件路径转换为可访问的 HTTP URL.
 var frontendURL string
+
+// minimaxKeyMgr 是 MiniMax API Key 轮换管理器.
+var minimaxKeyMgr *MiniMaxKeyManager
+
+// minimaxAPIHost 是 MiniMax API 基础 URL.
+var minimaxAPIHost string
 
 // uploadDateDir 是当前日期的上传子目录 (相对于 frontend 根目录).
 // 格式: upload/YYYY/MM/DD
@@ -21,6 +29,18 @@ func InitConfig(url string) {
 	frontendURL = url
 	now := time.Now()
 	uploadDateRelPath = fmt.Sprintf("upload/%s", now.Format("2006/01/02"))
+}
+
+// InitMiniMaxTools 初始化 MiniMax 工具的 Key 管理器和 API Host.
+// 必须在任何 MiniMax 工具执行之前调用.
+func InitMiniMaxTools(keys []string, apiHost string) {
+	if len(keys) > 0 {
+		minimaxKeyMgr = NewMiniMaxKeyManager(keys)
+		minimaxAPIHost = strings.TrimRight(apiHost, "/")
+		log.Printf("[minimax-tools] initialized with host=%s, keys=%d", minimaxAPIHost, len(keys))
+	} else {
+		log.Printf("[minimax-tools] no API keys configured, search and image tools will be disabled")
+	}
 }
 
 // GetFrontendURL 返回当前前端基础 URL.

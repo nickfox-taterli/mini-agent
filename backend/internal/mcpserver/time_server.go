@@ -44,6 +44,14 @@ func NewHTTPHandler() http.Handler {
 		Name:        "convert_local_path_to_url",
 		Description: "Convert a local file path under frontend directory into a downloadable frontend URL.",
 	}, convertLocalPathToURL)
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "minimax_web_search",
+		Description: "Search the web using MiniMax search API. Returns titles, URLs and snippets. Aim for 3-5 keywords for best results. For time-sensitive topics, include the current date.",
+	}, minimaxWebSearch)
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "minimax_understand_image",
+		Description: "Analyze and understand an image using MiniMax vision model. Provide image URL or local file path and a prompt describing what to analyze. Supports JPEG, PNG, WebP formats.",
+	}, minimaxUnderstandImage)
 
 	// 使用 stateless 模式, 让前端用最少请求即可调用工具.
 	return mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {

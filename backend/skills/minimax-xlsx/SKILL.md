@@ -1,9 +1,9 @@
 ---
 name: minimax-xlsx
-description: "Open, create, read, analyze, edit, or validate Excel/spreadsheet files (.xlsx, .xlsm, .csv, .tsv). Use when the user asks to create, build, modify, analyze, read, validate, or format any Excel spreadsheet, financial model, pivot table, or tabular data file. Covers: creating new xlsx from scratch, reading and analyzing existing files, editing existing xlsx with zero format loss, formula recalculation and validation, and applying professional financial formatting standards. Triggers on 'spreadsheet', 'Excel', '.xlsx', '.csv', 'pivot table', 'financial model', 'formula', or any request to produce tabular data in Excel format."
+description: "Open, create, read, analyze, edit, or validate Excel/spreadsheet files (.xlsx, .xlsm, .xls, .csv, .tsv). Use when the user asks to create, build, modify, analyze, read, validate, or format any Excel spreadsheet, financial model, pivot table, or tabular data file. Covers: creating new xlsx from scratch, reading and analyzing existing files, editing existing xlsx with zero format loss, formula recalculation and validation, and applying professional financial formatting standards. Triggers on 'spreadsheet', 'Excel', '.xlsx', '.csv', 'pivot table', 'financial model', 'formula', or any request to produce tabular data in Excel format."
 license: MIT
 metadata:
-  version: "1.0"
+  version: "1.1"
   category: productivity
   sources:
     - ECMA-376 Office Open XML File Formats
@@ -38,6 +38,14 @@ NEVER write these files in the project directory or under `SKILL_DIR`. Only the 
 
 Start with `xlsx_reader.py` for structure discovery, then pandas for custom analysis. Never modify the source file.
 
+**Multi-file support**: You can analyze multiple files at once:
+```bash
+python3 xlsx_reader.py file1.xlsx file2.xlsx file3.xlsx
+python3 xlsx_reader.py file1.xlsx file2.xlsx --json  # machine-readable output
+```
+
+**Supported formats**: `.xlsx`, `.xlsm`, `.xls`, `.csv`, `.tsv`
+
 **Formatting rule**: When the user specifies decimal places (e.g. "2 decimal places"), apply that format to ALL numeric values - use `f'{v:.2f}'` on every number. Never output `12875` when `12875.00` is required.
 
 **Aggregation rule**: Always compute sums/means/counts directly from the DataFrame column - e.g. `df['Revenue'].sum()`. Never re-derive column values before aggregation.
@@ -60,7 +68,7 @@ Never use openpyxl round-trip on existing files (corrupts VBA, pivots, sparkline
 ```bash
 python3 SKILL_DIR/scripts/xlsx_unpack.py input.xlsx /tmp/xlsx_work/
 # Find the target sheet's XML via xl/workbook.xml → xl/_rels/workbook.xml.rels
-# Then use the Edit tool to add <f> inside the target <c> element:
+# Then use the Edit tool to add `<f>` inside the target `<c>` element:
 #   <c r="B3"><f>SUM('Sales Data'!D2:D13)</f><v></v></c>
 python3 SKILL_DIR/scripts/xlsx_pack.py /tmp/xlsx_work/ output.xlsx
 ```
@@ -138,8 +146,11 @@ Run `formula_check.py` for static validation. Use `libreoffice_recalc.py` for dy
 ## Utility Scripts
 
 ```bash
-python3 SKILL_DIR/scripts/xlsx_reader.py input.xlsx                 # structure discovery
-python3 SKILL_DIR/scripts/formula_check.py file.xlsx --json         # formula validation
+python3 SKILL_DIR/scripts/xlsx_reader.py file.xlsx                 # structure discovery (single file)
+python3 SKILL_DIR/scripts/xlsx_reader.py file1.xlsx file2.xlsx     # multi-file analysis
+python3 SKILL_DIR/scripts/xlsx_reader.py file.xlsx --json          # machine-readable output
+python3 SKILL_DIR/scripts/xlsx_reader.py file.xlsx --quality       # data quality audit only
+python3 SKILL_DIR/scripts/formula_check.py file.xlsx --json        # formula validation
 python3 SKILL_DIR/scripts/formula_check.py file.xlsx --report      # standardized report
 python3 SKILL_DIR/scripts/xlsx_unpack.py in.xlsx /tmp/work/         # unpack for XML editing
 python3 SKILL_DIR/scripts/xlsx_pack.py /tmp/work/ out.xlsx          # repack after editing

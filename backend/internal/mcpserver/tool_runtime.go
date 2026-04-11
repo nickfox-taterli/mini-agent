@@ -88,6 +88,22 @@ func ExecuteToolByJSON(name string, rawArgs string) (map[string]any, error) {
 			"local_path": out.LocalPath,
 			"url":        out.URL,
 		}, nil
+	case "minimax_web_search":
+		var in minimaxWebSearchInput
+		if rawArgs != "" {
+			if err := json.Unmarshal([]byte(rawArgs), &in); err != nil {
+				return nil, fmt.Errorf("invalid minimax_web_search arguments: %w", err)
+			}
+		}
+		return minimaxWebSearchLocal(in.Query)
+	case "minimax_understand_image":
+		var in minimaxUnderstandImageInput
+		if rawArgs != "" {
+			if err := json.Unmarshal([]byte(rawArgs), &in); err != nil {
+				return nil, fmt.Errorf("invalid minimax_understand_image arguments: %w", err)
+			}
+		}
+		return minimaxUnderstandImageLocal(in.ImageURL, in.Prompt)
 	default:
 		return nil, fmt.Errorf("unsupported tool: %s", name)
 	}

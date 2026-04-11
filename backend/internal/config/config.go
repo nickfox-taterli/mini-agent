@@ -9,8 +9,14 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig    `yaml:"server"`
-	Backends []BackendConfig `yaml:"backends"`
+	Server      ServerConfig      `yaml:"server"`
+	MinimaxTools MinimaxToolsConfig `yaml:"minimax_tools"`
+	Backends    []BackendConfig   `yaml:"backends"`
+}
+
+type MinimaxToolsConfig struct {
+	APIKeys []string `yaml:"api_keys"`
+	APIHost string   `yaml:"api_host"`
 }
 
 type ServerConfig struct {
