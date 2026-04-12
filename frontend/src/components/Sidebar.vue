@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 
 const props = defineProps({
   conversations: {
@@ -18,10 +18,30 @@ const props = defineProps({
 
 const emit = defineEmits(['toggle', 'new-chat', 'select-conversation', 'delete-conversation'])
 
+const showSettings = ref(false)
+
 function handleDelete(e, id) {
   e.stopPropagation()
   emit('delete-conversation', id)
 }
+
+function toggleSettings() {
+  showSettings.value = !showSettings.value
+}
+
+function handleClickOutside(e) {
+  if (showSettings.value && !e.target.closest('.settings-popup') && !e.target.closest('.user-profile')) {
+    showSettings.value = false
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+})
 
 const sortedConversations = computed(() => {
   return [...props.conversations].sort((a, b) => b.createdAt - a.createdAt)
@@ -33,18 +53,17 @@ const sortedConversations = computed(() => {
     <div class="sidebar-header">
       <img src="/logo.png" alt="Logo" class="sidebar-logo" />
       <button class="sidebar-toggle" @click="emit('toggle')" title="收起侧边栏">
-        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-          <rect x="1" y="2" width="5" height="14" rx="1" stroke="currentColor" stroke-width="1.5"/>
-          <rect x="8" y="2" width="9" height="14" rx="1" stroke="currentColor" stroke-width="1.5"/>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="3" y1="6" x2="21" y2="6"/>
+          <line x1="3" y1="12" x2="21" y2="12"/>
+          <line x1="3" y1="18" x2="21" y2="18"/>
         </svg>
       </button>
     </div>
 
     <button class="new-chat-btn" @click="emit('new-chat')">
-      <svg class="plus-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
-        <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/>
-        <line x1="8" y1="4.5" x2="8" y2="11.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-        <line x1="4.5" y1="8" x2="11.5" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      <svg class="plus-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 5v14M5 12h14" stroke="#4FC3F7"/>
       </svg>
       <span class="new-chat-text">新对话</span>
       <span class="shortcut-hint">Ctrl K</span>
@@ -52,9 +71,9 @@ const sortedConversations = computed(() => {
 
     <div class="sidebar-history">
       <div class="history-header">
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-          <circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.2"/>
-          <path d="M7 4v3.5l2.5 1.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10" stroke="#4FC3F7"/>
+          <polyline points="12 6 12 12 16 14" stroke="#4FC3F7"/>
         </svg>
         <span>历史会话</span>
       </div>
@@ -68,8 +87,9 @@ const sortedConversations = computed(() => {
         >
           <span class="history-title">{{ conv.title }}</span>
           <button class="history-delete" @click="handleDelete($event, conv.id)" title="删除会话">
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path d="M2.5 2.5L9.5 9.5M9.5 2.5L2.5 9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
           </button>
         </div>
@@ -77,15 +97,35 @@ const sortedConversations = computed(() => {
     </div>
 
     <div class="sidebar-footer">
-      <div class="user-profile">
+      <div class="user-profile" @click="toggleSettings">
         <img src="/avatar.png" alt="Avatar" class="user-avatar" />
         <div class="user-info">
           <span class="username">TaterLi</span>
           <span class="plan-badge">Plus</span>
         </div>
-        <svg class="chevron-down" width="14" height="14" viewBox="0 0 14 14" fill="none">
-          <path d="M3.5 5.25L7 8.75L10.5 5.25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
+      </div>
+      <div v-if="showSettings" class="settings-popup">
+        <div class="settings-header">
+          <img src="/avatar.png" alt="Avatar" class="settings-avatar" />
+          <div class="settings-user-info">
+            <span class="settings-username">TaterLi</span>
+            <span class="settings-plan">Plus 会员</span>
+          </div>
+        </div>
+        <div class="settings-divider"></div>
+        <div class="settings-item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span>设置</span>
+        </div>
+        <div class="settings-item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span>帮助与反馈</span>
+        </div>
+        <div class="settings-divider"></div>
+        <div class="settings-item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          <span>退出登录</span>
+        </div>
       </div>
     </div>
   </aside>

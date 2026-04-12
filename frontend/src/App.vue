@@ -21,7 +21,7 @@ const {
 
 const {
   loading, toolCalling, toolCallingName, workingHard, currentThinkingPhrase,
-  backends, selectedBackendId, now, sendMessage, loadBackends, cleanup,
+  backends, selectedBackendId, now, sendMessage, regenerate, loadBackends, cleanup,
   getRandomThinkingDonePhrase, getThinkingDuration
 } = useChatStream(apiBase, renderMarkdown)
 
@@ -30,6 +30,9 @@ const input = ref('')
 const messages = ref([])
 const textareaRef = ref(null)
 const expandedThinking = reactive(new Map())
+
+// 标题手动修改追踪
+const titleManuallySet = reactive(new Map())
 
 // 文件上传
 const uploading = ref(false)
@@ -80,6 +83,14 @@ async function handleSend() {
   })
 }
 
+// 重新生成回复
+async function handleRegenerate(idx) {
+  await regenerate({
+    idx, messages, expandedThinking,
+    saveCurrentMessages: () => saveCurrentMessages(messages)
+  })
+}
+
 // 文件上传
 
 async function handleFileSelect(event) {
@@ -112,51 +123,68 @@ function handleDragOver(e) { e.preventDefault(); isDragging.value = true }
 function handleDragLeave(e) { e.preventDefault(); isDragging.value = false }
 async function handleDrop(e) { e.preventDefault(); isDragging.value = false; const files = e.dataTransfer?.files; if (files) { for (const file of files) { await uploadFile(file) } } }
 
-// 异步生成标题
-async function generateTitleAsync(convId) {
+// 异步生成标题 (带重试机制)
+async function generateTitleAsync(convId, maxRetries = 3, retryDelay = 1000) {
   const conv = conversations.value.find(c => c.id === convId)
   if (!conv) return
+  // 如果用户手动修改过标题,不再自动覆盖
+  if (titleManuallySet.get(convId)) return
   if (conv.title !== '新对话') return
   const userMsgs = messages.value.filter(m => m.role === 'user')
   if (userMsgs.length === 0) return
 
-  try {
-    const titleMessages = [
-      { role: 'system', content: '你是一个标题生成器. 请根据用户的消息内容, 用中文生成一个简短的对话标题 (不超过20个字). 只输出标题文本, 不要加引号, 不要加句号, 不要加任何额外说明.' },
-      { role: 'user', content: userMsgs.slice(0, 2).map(m => m.content).join('\n') }
-    ]
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const titleMessages = [
+        { role: 'system', content: '你是一个标题生成器. 请根据用户的消息内容, 用中文生成一个简短的对话标题 (不超过20个字). 只输出标题文本, 不要加引号, 不要加句号, 不要加任何额外说明.' },
+        { role: 'user', content: userMsgs.slice(0, 2).map(m => m.content).join('\n') }
+      ]
 
-    const res = await fetch(`${apiBase}/api/chat/stream`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ backend_id: selectedBackendId.value || undefined, messages: titleMessages })
-    })
-    if (!res.ok || !res.body) return
+      const res = await fetch(`${apiBase}/api/chat/stream`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ backend_id: selectedBackendId.value || undefined, messages: titleMessages })
+      })
+      if (!res.ok || !res.body) break
 
-    const reader = res.body.getReader()
-    const decoder = new TextDecoder('utf-8')
-    let buffer = '', title = ''
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder('utf-8')
+      let buffer = '', title = ''
 
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
       while (true) {
-        const { block, rest } = takeNextSSEBlock(buffer)
-        if (block === null) { buffer = rest; break }
-        buffer = rest
-        const { event, payload } = parseSSEBlock(block)
-        if (!payload) continue
-        if (event === 'content') title += payload.delta || ''
-        if (event === 'done' || event === 'error') { await reader.cancel(); break }
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        while (true) {
+          const { block, rest } = takeNextSSEBlock(buffer)
+          if (block === null) { buffer = rest; break }
+          buffer = rest
+          const { event, payload } = parseSSEBlock(block)
+          if (!payload) continue
+          if (event === 'content') title += payload.delta || ''
+          if (event === 'done' || event === 'error') { await reader.cancel(); break }
+        }
+      }
+
+      title = title.trim().replace(/^["""']|["""']$/g, '').replace(/\n/g, ' ')
+      if (title && title.length > 0 && title.length <= 50) {
+        const target = conversations.value.find(c => c.id === convId)
+        if (target && !titleManuallySet.get(convId)) {
+          target.title = title
+        }
+      }
+      return // 成功则退出
+    } catch {
+      // 静默失败,等待重试
+      if (attempt < maxRetries - 1) {
+        await new Promise(r => setTimeout(r, retryDelay))
       }
     }
+  }
+}
 
-    title = title.trim().replace(/^["""']|["""']$/g, '').replace(/\n/g, ' ')
-    if (title && title.length > 0 && title.length <= 50) {
-      const target = conversations.value.find(c => c.id === convId)
-      if (target) { target.title = title }
-    }
-  } catch {}
+// 标记标题已被用户手动修改
+function markTitleManuallySet(convId) {
+  titleManuallySet.set(convId, true)
 }
 
 function extractTitle(msgs) {
@@ -236,6 +264,7 @@ onUnmounted(() => {
               :msg="msg"
               :idx="idx"
               :is-last="idx === messages.length - 1"
+              :loading="loading"
               :working-hard="workingHard"
               :tool-calling="toolCalling"
               :tool-calling-name="toolCallingName"
@@ -245,6 +274,7 @@ onUnmounted(() => {
               :get-thinking-duration="getThinkingDuration"
               @toggle-thinking="toggleThinking"
               @copy-code="copyCode"
+              @regenerate="handleRegenerate"
             />
           </div>
         </div>

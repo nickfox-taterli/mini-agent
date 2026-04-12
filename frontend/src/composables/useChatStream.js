@@ -140,40 +140,8 @@ export function useChatStream(apiBase, renderMarkdown) {
       .map((m) => ({ role: m.role, content: m.content }))
   }
 
-  async function sendMessage({ input, messages, attachedFiles, textareaRef, expandedThinking, saveCurrentMessages, generateTitleAsync, currentConversationId }) {
-    if (loading.value) { stopGeneration(); return }
-    if (!input.value.trim() && attachedFiles.value.length === 0) return
-
-    const userText = input.value.trim()
-    input.value = ''
-    await nextTick()
-    if (textareaRef.value) textareaRef.value.style.height = 'auto'
-
-    let finalText = userText
-    if (attachedFiles.value.length > 0) {
-      for (const file of attachedFiles.value) {
-        finalText += `\n\n[附件: ${file.name}](${file.url})`
-      }
-      attachedFiles.value = []
-    }
-
-    const userMsg = reactive({
-      role: 'user', content: finalText,
-      renderedContent: renderMarkdown(finalText)
-    })
-    messages.value.push(userMsg)
-    saveCurrentMessages()
-    generateTitleAsync(currentConversationId.value)
-
-    const assistant = reactive({
-      role: 'assistant', reasoning: '', content: '', reasoningDone: false,
-      thinkingDuration: null, thinkingStartTime: Date.now(), retrying: null,
-      renderedContent: '', renderedReasoning: ''
-    })
-    messages.value.push(assistant)
-    await nextTick()
-    window.scrollTo(0, document.body.scrollHeight)
-
+  // 流式处理核心逻辑
+  async function _streamAssistant(assistant, messages, saveCurrentMessages) {
     loading.value = true
     startTimer()
     startWorkingHardTimer()
@@ -268,6 +236,64 @@ export function useChatStream(apiBase, renderMarkdown) {
     }
   }
 
+  async function sendMessage({ input, messages, attachedFiles, textareaRef, expandedThinking, saveCurrentMessages, generateTitleAsync, currentConversationId }) {
+    if (loading.value) { stopGeneration(); return }
+    if (!input.value.trim() && attachedFiles.value.length === 0) return
+
+    const userText = input.value.trim()
+    input.value = ''
+    await nextTick()
+    if (textareaRef.value) textareaRef.value.style.height = 'auto'
+
+    let finalText = userText
+    if (attachedFiles.value.length > 0) {
+      for (const file of attachedFiles.value) {
+        finalText += `\n\n[附件: ${file.name}](${file.url})`
+      }
+      attachedFiles.value = []
+    }
+
+    const userMsg = reactive({
+      role: 'user', content: finalText,
+      renderedContent: renderMarkdown(finalText)
+    })
+    messages.value.push(userMsg)
+    saveCurrentMessages()
+    generateTitleAsync(currentConversationId.value)
+
+    const assistant = reactive({
+      role: 'assistant', reasoning: '', content: '', reasoningDone: false,
+      thinkingDuration: null, thinkingStartTime: Date.now(), retrying: null,
+      renderedContent: '', renderedReasoning: ''
+    })
+    messages.value.push(assistant)
+    await nextTick()
+    window.scrollTo(0, document.body.scrollHeight)
+
+    await _streamAssistant(assistant, messages, saveCurrentMessages)
+  }
+
+  // 重新生成指定位置的助手回复
+  async function regenerate({ idx, messages, saveCurrentMessages, expandedThinking }) {
+    if (loading.value) return
+    // 删除旧的助手消息
+    messages.value.splice(idx, 1)
+    // 创建新的助手消息占位
+    const assistant = reactive({
+      role: 'assistant', reasoning: '', content: '', reasoningDone: false,
+      thinkingDuration: null, thinkingStartTime: Date.now(), retrying: null,
+      renderedContent: '', renderedReasoning: ''
+    })
+    messages.value.push(assistant)
+    await nextTick()
+    window.scrollTo(0, document.body.scrollHeight)
+
+    // 重置该消息的思考展开状态
+    expandedThinking.set(idx, false)
+
+    await _streamAssistant(assistant, messages, saveCurrentMessages)
+  }
+
   function cleanup() {
     stopTimer()
     stopThinkingPhraseCycle()
@@ -277,7 +303,7 @@ export function useChatStream(apiBase, renderMarkdown) {
   return {
     loading, toolCalling, toolCallingName, workingHard, currentThinkingPhrase,
     backends, selectedBackendId, now,
-    sendMessage, stopGeneration, loadBackends, cleanup,
+    sendMessage, regenerate, stopGeneration, loadBackends, cleanup,
     getRandomThinkingDonePhrase, getThinkingDuration
   }
 }

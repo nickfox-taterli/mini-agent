@@ -66,7 +66,9 @@ const canSend = computed(() => (props.input.trim() !== '' || props.attachedFiles
     />
     <button class="attach-btn" @click="triggerFileInput" :disabled="loading || uploading" title="上传文件">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+        <path d="M21 11v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6"/>
+        <polyline points="17 8 12 3 7 8"/>
+        <line x1="12" y1="3" x2="12" y2="15"/>
       </svg>
     </button>
     <textarea
@@ -90,16 +92,18 @@ const canSend = computed(() => (props.input.trim() !== '' || props.attachedFiles
         @click="emit('send')"
       >
         <!-- 空状态: 暗淡箭头 -->
-        <svg v-if="!input.trim() && attachedFiles.length === 0 && !loading" width="18" height="18" viewBox="0 0 18 18" fill="none">
-          <path d="M9 14V4M9 4L4.5 8.5M9 4L13.5 8.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <svg v-if="!input.trim() && attachedFiles.length === 0 && !loading" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="22" y1="2" x2="11" y2="13"/>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"/>
         </svg>
         <!-- 有输入: 点亮箭头 -->
-        <svg v-else-if="(input.trim() || attachedFiles.length > 0) && !loading" width="18" height="18" viewBox="0 0 18 18" fill="none">
-          <path d="M9 14V4M9 4L4.5 8.5M9 4L13.5 8.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <svg v-else-if="(input.trim() || attachedFiles.length > 0) && !loading" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="22" y1="2" x2="11" y2="13"/>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"/>
         </svg>
         <!-- 加载中: 停止图标 -->
-        <svg v-else width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-          <rect x="2" y="2" width="10" height="10" rx="2"/>
+        <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+          <rect x="6" y="6" width="12" height="12" rx="2"/>
         </svg>
       </button>
     </div>

@@ -264,6 +264,7 @@ html {
 /* ===== Sidebar Footer ===== */
 
 .sidebar-footer {
+  position: relative;
   padding: 12px;
   border-top: 1px solid var(--sidebar-border);
 }
@@ -311,6 +312,87 @@ html {
 .chevron-down {
   color: var(--text-muted);
   flex-shrink: 0;
+}
+
+/* ===== Settings Popup ===== */
+
+.settings-popup {
+  position: absolute;
+  bottom: 100%;
+  left: 12px;
+  right: 12px;
+  margin-bottom: 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  z-index: 100;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  animation: settingsFadeIn 0.15s ease;
+}
+
+@keyframes settingsFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+}
+
+.settings-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.settings-user-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-username {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.settings-plan {
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.settings-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 8px 0;
+}
+
+.settings-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--sidebar-text);
+  font-size: 13px;
+  transition: background 0.12s, color 0.12s;
+}
+
+.settings-item:hover {
+  background: var(--sidebar-hover);
+  color: var(--text-primary);
 }
 
 /* ===== Sidebar Open Button (when collapsed) ===== */
@@ -384,16 +466,40 @@ html {
 
 .empty-state {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   width: 100%;
   min-height: 60vh;
+  gap: 24px;
+  padding: 40px;
+}
+
+.empty-state-icon {
+  width: 120px;
+  height: 120px;
+  opacity: 0.6;
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
 }
 
 .empty-state h2 {
   color: var(--text-muted);
   font-size: 22px;
   font-weight: 400;
+  text-align: center;
+}
+
+.empty-state p {
+  color: var(--text-muted);
+  font-size: 14px;
+  text-align: center;
+  opacity: 0.7;
+  margin-top: -12px;
 }
 
 /* ===== Chat Area (natural flow, no internal scroll) ===== */
@@ -593,6 +699,42 @@ html {
 .assistant-message {
   width: 100%;
   padding: 4px 0;
+}
+
+/* ===== Message Actions (重新回答 / 复制Markdown) ===== */
+
+.message-actions {
+  display: flex;
+  gap: 2px;
+  margin-top: 6px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.assistant-message:hover .message-actions,
+.message-actions:focus-within {
+  opacity: 1;
+}
+
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.action-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 /* ===== Thinking Block ===== */
@@ -925,10 +1067,13 @@ html {
 }
 
 .copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   background: transparent;
   border: 1px solid var(--border-light);
   color: var(--text-secondary);
-  padding: 2px 10px;
+  padding: 2px 8px;
   border-radius: 4px;
   cursor: pointer;
   font-size: 12px;
@@ -940,6 +1085,10 @@ html {
   background: var(--bg-inline-code);
   color: var(--text-primary);
   border-color: var(--text-secondary);
+}
+
+.copy-btn svg {
+  flex-shrink: 0;
 }
 
 .code-block-wrapper pre {
@@ -1014,6 +1163,7 @@ html {
   font-family: var(--font-sans);
   max-height: calc(1.5em * 10 + 4px);
   overflow-y: auto;
+  vertical-align: bottom;
 }
 
 .input::placeholder {
@@ -1093,8 +1243,8 @@ html {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   border: none;
   border-radius: 50%;
   background: var(--border);
