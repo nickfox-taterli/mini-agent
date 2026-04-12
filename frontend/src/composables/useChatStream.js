@@ -213,7 +213,7 @@ export function useChatStream(apiBase, renderMarkdown) {
           }
 
           if (event === 'tool_start') {
-            resetWorkingHard(); toolCallingName.value = payload.tool_name || ''
+            resetWorkingHard(); toolCallingName.value = payload.display_name || payload.tool_name || ''
             toolCalling.value = true; toolCallStartTime = Date.now(); await scrollToBottom()
           }
 

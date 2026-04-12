@@ -5,6 +5,24 @@ import (
 	"fmt"
 )
 
+// toolDisplayNames 将原始工具名映射为用户友好的显示名.
+var toolDisplayNames = map[string]string{
+	"get_system_time":           "获取系统时间",
+	"run_skill_bash":            "Skill 执行",
+	"web_fetch":                 "网页抓取",
+	"convert_local_path_to_url": "路径转换",
+	"minimax_web_search":        "网络搜索",
+	"minimax_understand_image":  "图片理解",
+}
+
+// ToolDisplayName 返回工具的友好显示名, 未匹配时返回原始名.
+func ToolDisplayName(name string) string {
+	if display, ok := toolDisplayNames[name]; ok {
+		return display
+	}
+	return name
+}
+
 // ExecuteToolByJSON 按工具名执行本地 MCP 工具, 返回结构化结果.
 func ExecuteToolByJSON(name string, rawArgs string) (map[string]any, error) {
 	switch name {

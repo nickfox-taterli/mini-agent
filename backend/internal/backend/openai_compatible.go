@@ -234,9 +234,10 @@ func (a *OpenAICompatibleAdapter) StreamChat(ctx context.Context, req StreamRequ
 
 			// 发送工具开始事件
 			if err := emit("tool_start", map[string]any{
-				"tool_name": call.Function.Name,
-				"call_id":   call.ID,
-				"arguments": call.Function.Arguments,
+				"tool_name":    call.Function.Name,
+				"display_name": mcpserver.ToolDisplayName(call.Function.Name),
+				"call_id":      call.ID,
+				"arguments":    call.Function.Arguments,
 			}); err != nil {
 				return err
 			}
@@ -257,9 +258,10 @@ func (a *OpenAICompatibleAdapter) StreamChat(ctx context.Context, req StreamRequ
 
 			// 发送工具结束事件
 			if err := emit("tool_end", map[string]any{
-				"tool_name": call.Function.Name,
-				"call_id":   call.ID,
-				"result":    out,
+				"tool_name":    call.Function.Name,
+				"display_name": mcpserver.ToolDisplayName(call.Function.Name),
+				"call_id":      call.ID,
+				"result":       out,
 			}); err != nil {
 				return err
 			}
