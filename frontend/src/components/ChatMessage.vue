@@ -62,7 +62,7 @@ function handleCopyMarkdown() {
         </div>
         <!-- 回答内容 -->
         <div
-          v-if="msg.reasoningDone || !msg.reasoning"
+          v-if="msg.content || !msg.reasoning"
           class="markdown-body"
           v-html="msg.renderedContent"
           @click="emit('copy-code', $event)"

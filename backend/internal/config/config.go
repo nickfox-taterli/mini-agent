@@ -3,20 +3,34 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
-	Server      ServerConfig      `yaml:"server"`
-	MinimaxTools MinimaxToolsConfig `yaml:"minimax_tools"`
-	Backends    []BackendConfig   `yaml:"backends"`
+	Server        ServerConfig        `yaml:"server"`
+	MinimaxTools  MinimaxToolsConfig  `yaml:"minimax_tools"`
+	DockerRuntime DockerRuntimeConfig `yaml:"docker_runtime"`
+	Backends      []BackendConfig     `yaml:"backends"`
 }
 
 type MinimaxToolsConfig struct {
 	APIKeys []string `yaml:"api_keys"`
 	APIHost string   `yaml:"api_host"`
+}
+
+type DockerRuntimeConfig struct {
+	Enabled               bool    `yaml:"enabled"`
+	Host                  string  `yaml:"host"`
+	SessionTTLSeconds     int     `yaml:"session_ttl_seconds"`
+	DefaultTimeoutSeconds int     `yaml:"default_timeout_seconds"`
+	MaxTimeoutSeconds     int     `yaml:"max_timeout_seconds"`
+	MemoryLimit           string  `yaml:"memory_limit"`
+	CPULimit              float64 `yaml:"cpu_limit"`
+	PidsLimit             int     `yaml:"pids_limit"`
+	WorkspaceRoot         string  `yaml:"workspace_root"`
 }
 
 type ServerConfig struct {
@@ -91,5 +105,64 @@ func (c *Config) Validate() error {
 	}
 	c.Server.FrontendURL = strings.TrimRight(c.Server.FrontendURL, "/")
 
+	c.normalizeDockerRuntimeDefaults()
+	if c.DockerRuntime.Enabled {
+		if c.DockerRuntime.WorkspaceRoot == "" {
+			return fmt.Errorf("docker_runtime.workspace_root is required when docker_runtime.enabled=true")
+		}
+		if filepath.IsAbs(c.DockerRuntime.WorkspaceRoot) {
+			clean := filepath.Clean(c.DockerRuntime.WorkspaceRoot)
+			c.DockerRuntime.WorkspaceRoot = clean
+		} else {
+			abs, err := filepath.Abs(c.DockerRuntime.WorkspaceRoot)
+			if err != nil {
+				return fmt.Errorf("resolve docker_runtime.workspace_root: %w", err)
+			}
+			c.DockerRuntime.WorkspaceRoot = abs
+		}
+		if c.DockerRuntime.DefaultTimeoutSeconds <= 0 || c.DockerRuntime.MaxTimeoutSeconds <= 0 {
+			return fmt.Errorf("docker_runtime timeout settings must be positive")
+		}
+		if c.DockerRuntime.DefaultTimeoutSeconds > c.DockerRuntime.MaxTimeoutSeconds {
+			return fmt.Errorf("docker_runtime.default_timeout_seconds must be <= docker_runtime.max_timeout_seconds")
+		}
+		if c.DockerRuntime.SessionTTLSeconds <= 0 {
+			return fmt.Errorf("docker_runtime.session_ttl_seconds must be positive")
+		}
+		if c.DockerRuntime.PidsLimit <= 0 {
+			return fmt.Errorf("docker_runtime.pids_limit must be positive")
+		}
+		if c.DockerRuntime.CPULimit <= 0 {
+			return fmt.Errorf("docker_runtime.cpu_limit must be positive")
+		}
+	}
+
 	return nil
+}
+
+func (c *Config) normalizeDockerRuntimeDefaults() {
+	if c.DockerRuntime.Host == "" {
+		c.DockerRuntime.Host = ""
+	}
+	if c.DockerRuntime.SessionTTLSeconds <= 0 {
+		c.DockerRuntime.SessionTTLSeconds = 1800
+	}
+	if c.DockerRuntime.DefaultTimeoutSeconds <= 0 {
+		c.DockerRuntime.DefaultTimeoutSeconds = 120
+	}
+	if c.DockerRuntime.MaxTimeoutSeconds <= 0 {
+		c.DockerRuntime.MaxTimeoutSeconds = 600
+	}
+	if c.DockerRuntime.MemoryLimit == "" {
+		c.DockerRuntime.MemoryLimit = "512m"
+	}
+	if c.DockerRuntime.CPULimit <= 0 {
+		c.DockerRuntime.CPULimit = 1.0
+	}
+	if c.DockerRuntime.PidsLimit <= 0 {
+		c.DockerRuntime.PidsLimit = 128
+	}
+	if strings.TrimSpace(c.DockerRuntime.WorkspaceRoot) == "" {
+		c.DockerRuntime.WorkspaceRoot = filepath.Join("data", "docker-workspaces")
+	}
 }

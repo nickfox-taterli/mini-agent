@@ -195,7 +195,6 @@ export function useChatStream(apiBase, renderMarkdown) {
 
           if (event === 'content') {
             resetWorkingHard(); startWorkingHardTimer()
-            assistant.reasoningDone = true
             assistant.content += payload.delta || ''
             assistant.renderedContent = renderMarkdown(assistant.content)
             assistant.retrying = null; await scrollToBottom()

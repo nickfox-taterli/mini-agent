@@ -623,7 +623,6 @@ func defaultOpenAITools() []openAITool {
 		},
 	}
 
-
 	webSearchTool := openAITool{}
 	webSearchTool.Type = "function"
 	webSearchTool.Function.Name = "minimax_web_search"
@@ -660,7 +659,124 @@ func defaultOpenAITools() []openAITool {
 		},
 	}
 
-	return []openAITool{timeTool, runSkillBashTool, webFetchTool, convertPathTool, webSearchTool, imageTool}
+	pythonSessionInitTool := openAITool{}
+	pythonSessionInitTool.Type = "function"
+	pythonSessionInitTool.Function.Name = "python_session_init"
+	pythonSessionInitTool.Function.Description = "Initialize or reuse a Python Docker sandbox session. Default python_version is 3.11."
+	pythonSessionInitTool.Function.Parameters = map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"properties": map[string]any{
+			"session_id": map[string]any{
+				"type":        "string",
+				"description": "Optional session id for reusing container.",
+			},
+			"python_version": map[string]any{
+				"type":        "string",
+				"description": "Optional Python version, one of 3.10/3.11/3.12. Default 3.11.",
+			},
+		},
+	}
+
+	pythonInstallTool := openAITool{}
+	pythonInstallTool.Type = "function"
+	pythonInstallTool.Function.Name = "python_install_packages"
+	pythonInstallTool.Function.Description = "Install Python packages explicitly in a Python sandbox session."
+	pythonInstallTool.Function.Parameters = map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"session_id", "packages"},
+		"properties": map[string]any{
+			"session_id": map[string]any{"type": "string"},
+			"packages": map[string]any{
+				"type": "array",
+				"items": map[string]any{
+					"type": "string",
+				},
+			},
+			"timeout_seconds": map[string]any{"type": "integer"},
+		},
+	}
+
+	pythonRunTool := openAITool{}
+	pythonRunTool.Type = "function"
+	pythonRunTool.Function.Name = "python_run_code"
+	pythonRunTool.Function.Description = "Run Python code in a Docker sandbox session."
+	pythonRunTool.Function.Parameters = map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"session_id"},
+		"properties": map[string]any{
+			"session_id":      map[string]any{"type": "string"},
+			"code":            map[string]any{"type": "string"},
+			"file_path":       map[string]any{"type": "string"},
+			"args":            map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+			"stdin":           map[string]any{"type": "string"},
+			"timeout_seconds": map[string]any{"type": "integer"},
+		},
+	}
+
+	pythonCloseTool := openAITool{}
+	pythonCloseTool.Type = "function"
+	pythonCloseTool.Function.Name = "python_session_close"
+	pythonCloseTool.Function.Description = "Close Python Docker sandbox session."
+	pythonCloseTool.Function.Parameters = map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"session_id"},
+		"properties": map[string]any{
+			"session_id": map[string]any{"type": "string"},
+		},
+	}
+
+	codeSessionInitTool := openAITool{}
+	codeSessionInitTool.Type = "function"
+	codeSessionInitTool.Function.Name = "code_session_init"
+	codeSessionInitTool.Function.Description = "Initialize or reuse common code Docker sandbox session."
+	codeSessionInitTool.Function.Parameters = map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"properties": map[string]any{
+			"session_id": map[string]any{"type": "string"},
+		},
+	}
+
+	codeRunTool := openAITool{}
+	codeRunTool.Type = "function"
+	codeRunTool.Function.Name = "code_run"
+	codeRunTool.Function.Description = "Run shell/c/cpp/java/php code in Docker sandbox session. For Java, the public class must be named 'Main'. Shell scripts support args."
+	codeRunTool.Function.Parameters = map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"session_id", "language", "source_code"},
+		"properties": map[string]any{
+			"session_id":      map[string]any{"type": "string"},
+			"language":        map[string]any{"type": "string"},
+			"source_code":     map[string]any{"type": "string"},
+			"stdin":           map[string]any{"type": "string"},
+			"args":            map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+			"timeout_seconds": map[string]any{"type": "integer"},
+		},
+	}
+
+	codeCloseTool := openAITool{}
+	codeCloseTool.Type = "function"
+	codeCloseTool.Function.Name = "code_session_close"
+	codeCloseTool.Function.Description = "Close common code Docker sandbox session."
+	codeCloseTool.Function.Parameters = map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"session_id"},
+		"properties": map[string]any{
+			"session_id": map[string]any{"type": "string"},
+		},
+	}
+
+	return []openAITool{
+		timeTool, runSkillBashTool, webFetchTool, convertPathTool, webSearchTool, imageTool,
+		pythonSessionInitTool, pythonInstallTool, pythonRunTool, pythonCloseTool,
+		codeSessionInitTool, codeRunTool, codeCloseTool,
+	}
 }
 
 func logUpstreamRequest(traceID string, backendID string, round int, payload openAIStreamReq, tools []openAITool, rawBody []byte) {

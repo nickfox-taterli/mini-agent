@@ -247,6 +247,13 @@ SSE 事件:
 - `run_skill_bash`: 在 `backend/skills/<skill_name>` 中执行 Bash 命令,用于通用 skill 执行.
 - `web_fetch`: 抓取网页文本内容.
 - `convert_local_path_to_url`: 将前端目录下的本地磁盘路径转换为可下载 URL.
+- `python_session_init`: 初始化或复用 Python Docker 会话.
+- `python_install_packages`: 在 Python 会话中显式安装依赖包.
+- `python_run_code`: 在 Python 会话中执行代码.
+- `python_session_close`: 关闭 Python 会话并清理目录.
+- `code_session_init`: 初始化或复用通用代码 Docker 会话.
+- `code_run`: 在通用代码会话中执行 Shell/C/C++/Java/PHP.
+- `code_session_close`: 关闭通用代码会话并清理目录.
 
 前端调用示例(调用工具):
 
@@ -301,6 +308,57 @@ SSE 事件:
     "name": "convert_local_path_to_url",
     "arguments": {
       "local_path": "<project_root>/frontend/upload/2026/04/14/report.xlsx"
+    }
+  }
+}
+```
+
+Python 会话初始化示例:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "python-init",
+  "method": "tools/call",
+  "params": {
+    "name": "python_session_init",
+    "arguments": {
+      "python_version": "3.11"
+    }
+  }
+}
+```
+
+Python 执行代码示例:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "python-run",
+  "method": "tools/call",
+  "params": {
+    "name": "python_run_code",
+    "arguments": {
+      "session_id": "python-xxx",
+      "code": "print('hello')"
+    }
+  }
+}
+```
+
+通用代码执行示例:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "code-run",
+  "method": "tools/call",
+  "params": {
+    "name": "code_run",
+    "arguments": {
+      "session_id": "code-xxx",
+      "language": "cpp",
+      "source_code": "#include <iostream>\\nint main(){ std::cout << 42; }"
     }
   }
 }

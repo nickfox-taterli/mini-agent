@@ -1,6 +1,18 @@
 server:
   host: "0.0.0.0"
   port: 18888
+  frontend_url: "http://127.0.0.1:18889"
+
+docker_runtime:
+  enabled: true
+  host: ""
+  session_ttl_seconds: 1800
+  default_timeout_seconds: 120
+  max_timeout_seconds: 600
+  memory_limit: "512m"
+  cpu_limit: 1.0
+  pids_limit: 128
+  workspace_root: "data/docker-workspaces"
 
 backends:
   - id: "minimax-main"

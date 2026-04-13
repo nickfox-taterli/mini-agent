@@ -214,3 +214,31 @@ Q: 为什么不直接让模型按提示词拼接 URL?
 
 - 模型服从性存在波动,可能猜错 host/port/path.
 - 通过 `convert_local_path_to_url` 让 URL 生成走工具链,可保证稳定和可测试.
+
+---
+
+## 七,Docker 沙箱代码执行约束
+
+当前新增两组工具命名空间:
+
+- `python_*`: Python 专用沙箱执行.
+- `code_*`: Shell/C/C++/Java/PHP 通用沙箱执行.
+
+关键约束:
+
+- 单端点复用: 仍通过 `/api/mcp` 暴露.
+- 会话复用: `session_id -> container` 映射,并按 `session_ttl_seconds` 回收.
+- 安全参数: `--network=none`,`--read-only`,`--pids-limit`,`--memory`,`--cpus`,`--cap-drop=ALL`,`--security-opt no-new-privileges`.
+- 共享目录: 每会话挂载独立 `workspace` 目录,用于输入输出文件与产物持久化.
+- Python 包安装: 仅支持显式调用 `python_install_packages`,默认不自动安装.
+
+配置入口:
+
+- `backend/config.yaml` 的 `docker_runtime.*`.
+
+默认建议:
+
+- `python_version`: `3.11`.
+- `session_ttl_seconds`: `1800`.
+- `default_timeout_seconds`: `120`.
+- `max_timeout_seconds`: `600`.

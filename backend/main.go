@@ -35,6 +35,19 @@ func main() {
 
 	mcpserver.InitConfig(cfg.Server.FrontendURL)
 	mcpserver.InitMiniMaxTools(cfg.MinimaxTools.APIKeys, cfg.MinimaxTools.APIHost)
+	if err := mcpserver.InitDockerRuntime(mcpserver.DockerRuntimeConfigFromExternal(
+		cfg.DockerRuntime.Enabled,
+		cfg.DockerRuntime.Host,
+		cfg.DockerRuntime.SessionTTLSeconds,
+		cfg.DockerRuntime.DefaultTimeoutSeconds,
+		cfg.DockerRuntime.MaxTimeoutSeconds,
+		cfg.DockerRuntime.MemoryLimit,
+		cfg.DockerRuntime.CPULimit,
+		cfg.DockerRuntime.PidsLimit,
+		cfg.DockerRuntime.WorkspaceRoot,
+	)); err != nil {
+		log.Fatalf("init docker runtime: %v", err)
+	}
 
 	// 初始化 SQLite 数据库
 	dbPath := filepath.Join("data", "chat.db")

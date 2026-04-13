@@ -52,6 +52,34 @@ func NewHTTPHandler() http.Handler {
 		Name:        "minimax_understand_image",
 		Description: "Analyze and understand an image using MiniMax vision model. Provide image URL or local file path and a prompt describing what to analyze. Supports JPEG, PNG, WebP formats.",
 	}, minimaxUnderstandImage)
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "python_session_init",
+		Description: "Initialize or reuse a Python docker sandbox session. Default python_version is 3.11.",
+	}, pythonSessionInit)
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "python_install_packages",
+		Description: "Install Python packages explicitly into current Python session workspace.",
+	}, pythonInstallPackages)
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "python_run_code",
+		Description: "Run Python code in a Docker sandbox. Accept code string or workspace file path.",
+	}, pythonRunCode)
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "python_session_close",
+		Description: "Close Python docker sandbox session and cleanup workspace.",
+	}, pythonSessionClose)
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "code_session_init",
+		Description: "Initialize or reuse a common code sandbox session for shell/c/cpp/java/php.",
+	}, codeSessionInit)
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "code_run",
+		Description: "Run shell/c/cpp/java/php code in Docker sandbox. For Java, the public class must be named 'Main'.",
+	}, codeRun)
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "code_session_close",
+		Description: "Close common code docker sandbox session and cleanup workspace.",
+	}, codeSessionClose)
 
 	// 使用 stateless 模式, 让前端用最少请求即可调用工具.
 	return mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
