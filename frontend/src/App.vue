@@ -1,9 +1,10 @@
 <script setup>
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import Sidebar from './components/Sidebar.vue'
 import ChatMessage from './components/ChatMessage.vue'
 import Composer from './components/Composer.vue'
 import EmptyState from './components/EmptyState.vue'
+import DetailPanel from './components/DetailPanel.vue'
 import { useMarkdown } from './composables/useMarkdown'
 import { useConversations } from './composables/useConversations'
 import { useChatStream } from './composables/useChatStream'
@@ -31,6 +32,36 @@ const messages = ref([])
 const textareaRef = ref(null)
 const expandedThinking = reactive(new Map())
 
+// 详情面板状态
+const detailPanel = reactive({
+  open: false,
+  msgIdx: null
+})
+
+const detailThinkingDuration = computed(() => {
+  if (detailPanel.msgIdx == null) return ''
+  return getThinkingDuration(messages.value[detailPanel.msgIdx])
+})
+
+const detailMessage = computed(() => {
+  if (detailPanel.msgIdx == null) return null
+  return messages.value[detailPanel.msgIdx] || null
+})
+
+function openThinkingDetail(msgIdx) {
+  detailPanel.msgIdx = msgIdx
+  detailPanel.open = true
+}
+
+function openToolDetail({ msgIdx }) {
+  detailPanel.msgIdx = msgIdx
+  detailPanel.open = true
+}
+
+function closeDetailPanel() {
+  detailPanel.open = false
+}
+
 // 标题手动修改追踪
 const titleManuallySet = reactive(new Map())
 
@@ -49,20 +80,18 @@ function handleKeydown(e) {
 
 // 会话操作包装 (避免模板中 ref 自动解包问题)
 function handleNewChat() {
+  closeDetailPanel()
   createNewConversation(messages, expandedThinking)
 }
 
 function handleSelectConversation(id) {
+  closeDetailPanel()
   switchConversation(id, messages, expandedThinking)
 }
 
 function handleDeleteConversation(id) {
   deleteConversation(id, messages, expandedThinking)
 }
-
-// 思考展开/折叠
-function toggleThinking(idx) { expandedThinking.set(idx, !expandedThinking.get(idx)) }
-function isThinkingExpanded(idx) { return expandedThinking.get(idx) === true }
 
 // 自动调整输入框高度
 function autoResize() {
@@ -269,12 +298,12 @@ onUnmounted(() => {
               :tool-calling="toolCalling"
               :tool-calling-name="toolCallingName"
               :current-thinking-phrase="currentThinkingPhrase"
-              :is-thinking-expanded="isThinkingExpanded(idx)"
               :get-random-thinking-done-phrase="getRandomThinkingDonePhrase"
               :get-thinking-duration="getThinkingDuration"
-              @toggle-thinking="toggleThinking"
               @copy-code="copyCode"
               @regenerate="handleRegenerate"
+              @open-thinking-detail="openThinkingDetail"
+              @open-tool-detail="openToolDetail"
             />
           </div>
         </div>
@@ -305,5 +334,12 @@ onUnmounted(() => {
         <rect x="8" y="2" width="9" height="14" rx="1" stroke="currentColor" stroke-width="1.5"/>
       </svg>
     </button>
+
+    <DetailPanel
+      :open="detailPanel.open"
+      :message="detailMessage"
+      :thinking-duration="detailThinkingDuration"
+      @close="closeDetailPanel"
+    />
   </div>
 </template>

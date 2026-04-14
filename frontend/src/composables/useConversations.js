@@ -52,7 +52,10 @@ export function useConversations(renderMarkdown, apiBase) {
       }
       if (m.role === 'assistant') {
         base.renderedReasoning = renderMarkdown(m.reasoning || '')
-        base.thinkingStartTime = null; base.retrying = null
+        base.thinkingStartTime = null
+        base.retrying = null
+        base.toolCalls = m.toolCalls || []
+        base.processTimeline = m.processTimeline || []
       }
       return { ...base }
     })
@@ -62,7 +65,9 @@ export function useConversations(renderMarkdown, apiBase) {
   function toStorageMessages(messages) {
     return messages.value.map(m => ({
       role: m.role, content: m.content, reasoning: m.reasoning || '',
-      reasoningDone: m.reasoningDone || false, thinkingDuration: m.thinkingDuration || null
+      reasoningDone: m.reasoningDone || false, thinkingDuration: m.thinkingDuration || null,
+      toolCalls: m.toolCalls || [],
+      processTimeline: m.processTimeline || []
     }))
   }
 

@@ -15,6 +15,7 @@
 - 每个 skill 以子目录存在,例如: `backend/skills/minimax-xlsx`
 - 启动时会读取每个 skill 的 `SKILL.md` 中 `name/description`,并注入到模型系统提示词,让模型可感知可用 skill
 - Skill 与 MCP 的新增步骤,见 `docs/skills-mcp.md`
+- 系统提示词包含严格工具优先级: 命中 skill 时必须优先走 `run_skill_bash`; `python_*` 与 `code_*` 仅在无匹配 skill 或 skill 流程明确失败时作为兜底.
 
 ## 配置文件
 

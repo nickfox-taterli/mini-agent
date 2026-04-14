@@ -142,6 +142,63 @@ export function useChatStream(apiBase, renderMarkdown) {
 
   // 流式处理核心逻辑
   async function _streamAssistant(assistant, messages, saveCurrentMessages) {
+    function appendTextStep(type, delta) {
+      if (!delta) return
+      const timeline = assistant.processTimeline || (assistant.processTimeline = [])
+      const last = timeline[timeline.length - 1]
+      if (last && last.type === type && !last.closed) {
+        last.text += delta
+        last.rendered = renderMarkdown(last.text)
+        last.endTime = Date.now()
+        return
+      }
+      timeline.push(reactive({
+        type,
+        text: delta,
+        rendered: renderMarkdown(delta),
+        startTime: Date.now(),
+        endTime: Date.now(),
+        closed: false
+      }))
+    }
+
+    function appendToolStep(payload) {
+      const timeline = assistant.processTimeline || (assistant.processTimeline = [])
+      const existing = timeline.find((step) => step.type === 'tool' && step.call_id === payload.call_id)
+      if (existing) {
+        existing.tool_name = payload.tool_name
+        existing.display_name = payload.display_name || payload.tool_name
+        existing.arguments = payload.arguments || existing.arguments || ''
+        existing.status = 'running'
+        existing.result = null
+        existing.endTime = null
+        existing.closed = false
+        return existing
+      }
+      const toolStep = reactive({
+        type: 'tool',
+        call_id: payload.call_id,
+        tool_name: payload.tool_name,
+        display_name: payload.display_name || payload.tool_name,
+        arguments: payload.arguments || '',
+        result: null,
+        status: 'running',
+        startTime: Date.now(),
+        endTime: null,
+        closed: false
+      })
+      timeline.push(toolStep)
+      return toolStep
+    }
+
+    function closeCurrentTextStep(type) {
+      const timeline = assistant.processTimeline || []
+      const last = timeline[timeline.length - 1]
+      if (!last || last.type !== type || last.closed) return
+      last.endTime = Date.now()
+      last.closed = true
+    }
+
     loading.value = true
     startTimer()
     startWorkingHardTimer()
@@ -174,19 +231,64 @@ export function useChatStream(apiBase, renderMarkdown) {
           if (event === 'reasoning') {
             resetWorkingHard(); startWorkingHardTimer()
             const wasEmpty = !assistant.reasoning
-            assistant.reasoning += payload.delta || ''
+            const delta = payload.delta || ''
+            assistant.reasoning += delta
             assistant.renderedReasoning = renderMarkdown(assistant.reasoning)
+            appendTextStep('reasoning', delta)
             if (wasEmpty && assistant.reasoning) startThinkingPhraseCycle()
             await scrollToBottom()
           }
 
           if (event === 'tool_start') {
-            resetWorkingHard(); toolCallingName.value = payload.display_name || payload.tool_name || ''
-            toolCalling.value = true; toolCallStartTime = Date.now(); await scrollToBottom()
+            closeCurrentTextStep('reasoning')
+            closeCurrentTextStep('content')
+            resetWorkingHard()
+            toolCallingName.value = payload.display_name || payload.tool_name || ''
+            toolCalling.value = true; toolCallStartTime = Date.now()
+            // 持久化工具调用到消息模型, 避免同 call_id 重复入栈.
+            const existing = assistant.toolCalls.find(tc => tc.call_id === payload.call_id)
+            if (existing) {
+              existing.tool_name = payload.tool_name
+              existing.display_name = payload.display_name || payload.tool_name
+              existing.arguments = payload.arguments || existing.arguments || ''
+              existing.status = 'running'
+              existing.result = null
+              existing.startTime = existing.startTime || Date.now()
+              existing.endTime = null
+            } else {
+              assistant.toolCalls.push(reactive({
+                call_id: payload.call_id,
+                tool_name: payload.tool_name,
+                display_name: payload.display_name || payload.tool_name,
+                arguments: payload.arguments || '',
+                result: null,
+                status: 'running',
+                startTime: Date.now(),
+                endTime: null
+              }))
+            }
+            appendToolStep(payload)
+            await scrollToBottom()
           }
 
           if (event === 'tool_end') {
             resetWorkingHard()
+            // 更新对应的工具调用条目
+            const entry = assistant.toolCalls.find(tc => tc.call_id === payload.call_id)
+            if (entry) {
+              entry.result = payload.result
+              entry.status = payload.result?.error ? 'error' : 'completed'
+              entry.endTime = Date.now()
+            }
+            const toolStep = (assistant.processTimeline || []).find(
+              (step) => step.type === 'tool' && step.call_id === payload.call_id
+            )
+            if (toolStep) {
+              toolStep.result = payload.result
+              toolStep.status = payload.result?.error ? 'error' : 'completed'
+              toolStep.endTime = Date.now()
+              toolStep.closed = true
+            }
             const elapsed = Date.now() - toolCallStartTime
             await new Promise(resolve => setTimeout(resolve, Math.max(0, 2000 - elapsed)))
             toolCalling.value = false; toolCallingName.value = ''
@@ -195,8 +297,10 @@ export function useChatStream(apiBase, renderMarkdown) {
 
           if (event === 'content') {
             resetWorkingHard(); startWorkingHardTimer()
-            assistant.content += payload.delta || ''
+            const delta = payload.delta || ''
+            assistant.content += delta
             assistant.renderedContent = renderMarkdown(assistant.content)
+            appendTextStep('content', delta)
             assistant.retrying = null; await scrollToBottom()
           }
 
@@ -207,6 +311,8 @@ export function useChatStream(apiBase, renderMarkdown) {
           }
 
           if (event === 'error') {
+            closeCurrentTextStep('reasoning')
+            closeCurrentTextStep('content')
             resetWorkingHard()
             assistant.content += `\n[Error] ${payload.message || 'stream error'}`
             assistant.reasoningDone = true; doneReceived = true
@@ -216,6 +322,8 @@ export function useChatStream(apiBase, renderMarkdown) {
           }
 
           if (event === 'done') {
+            closeCurrentTextStep('reasoning')
+            closeCurrentTextStep('content')
             resetWorkingHard(); assistant.reasoningDone = true
             assistant.thinkingDuration = (Date.now() - assistant.thinkingStartTime) / 1000
             assistant.renderedContent = renderMarkdown(assistant.content)
@@ -263,7 +371,7 @@ export function useChatStream(apiBase, renderMarkdown) {
     const assistant = reactive({
       role: 'assistant', reasoning: '', content: '', reasoningDone: false,
       thinkingDuration: null, thinkingStartTime: Date.now(), retrying: null,
-      renderedContent: '', renderedReasoning: ''
+      renderedContent: '', renderedReasoning: '', toolCalls: [], processTimeline: []
     })
     messages.value.push(assistant)
     await nextTick()
@@ -281,7 +389,7 @@ export function useChatStream(apiBase, renderMarkdown) {
     const assistant = reactive({
       role: 'assistant', reasoning: '', content: '', reasoningDone: false,
       thinkingDuration: null, thinkingStartTime: Date.now(), retrying: null,
-      renderedContent: '', renderedReasoning: ''
+      renderedContent: '', renderedReasoning: '', toolCalls: [], processTimeline: []
     })
     messages.value.push(assistant)
     await nextTick()

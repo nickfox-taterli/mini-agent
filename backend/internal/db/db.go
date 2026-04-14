@@ -24,6 +24,7 @@ type Msg struct {
 	Reasoning        string   `json:"reasoning,omitempty"`
 	ReasoningDone    bool     `json:"reasoningDone,omitempty"`
 	ThinkingDuration *float64 `json:"thinkingDuration,omitempty"`
+	ToolCalls        string   `json:"toolCalls,omitempty"`
 }
 
 var globalDB *sql.DB
@@ -44,6 +45,8 @@ func Init(dbPath string) error {
 	if err := createTables(); err != nil {
 		return fmt.Errorf("create tables: %w", err)
 	}
+	// 迁移: 为已有数据库添加 tool_calls 列
+	globalDB.Exec(`ALTER TABLE messages ADD COLUMN tool_calls TEXT NOT NULL DEFAULT ''`)
 	return nil
 }
 
@@ -62,6 +65,7 @@ func createTables() error {
 			reasoning TEXT NOT NULL DEFAULT '',
 			reasoning_done INTEGER NOT NULL DEFAULT 0,
 			thinking_duration REAL,
+			tool_calls TEXT NOT NULL DEFAULT '',
 			sort_order INTEGER NOT NULL
 		);
 	`)
@@ -112,7 +116,7 @@ func GetConversation(id string) (*Conversation, error) {
 
 func loadMessages(convID string) ([]Msg, error) {
 	rows, err := globalDB.Query(
-		`SELECT role, content, reasoning, reasoning_done, thinking_duration
+		`SELECT role, content, reasoning, reasoning_done, thinking_duration, tool_calls
 		 FROM messages WHERE conversation_id = ? ORDER BY sort_order ASC`, convID)
 	if err != nil {
 		return nil, err
@@ -124,7 +128,7 @@ func loadMessages(convID string) ([]Msg, error) {
 		var m Msg
 		var reasoningDone int
 		var thinkingDuration sql.NullFloat64
-		if err := rows.Scan(&m.Role, &m.Content, &m.Reasoning, &reasoningDone, &thinkingDuration); err != nil {
+		if err := rows.Scan(&m.Role, &m.Content, &m.Reasoning, &reasoningDone, &thinkingDuration, &m.ToolCalls); err != nil {
 			return nil, err
 		}
 		m.ReasoningDone = reasoningDone != 0
@@ -172,9 +176,9 @@ func insertMessage(tx *sql.Tx, convID string, m *Msg, order int) error {
 		done = 1
 	}
 	_, err := tx.Exec(
-		`INSERT INTO messages (conversation_id, role, content, reasoning, reasoning_done, thinking_duration, sort_order)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		convID, m.Role, m.Content, m.Reasoning, done, dur, order)
+		`INSERT INTO messages (conversation_id, role, content, reasoning, reasoning_done, thinking_duration, tool_calls, sort_order)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		convID, m.Role, m.Content, m.Reasoning, done, dur, m.ToolCalls, order)
 	return err
 }
 

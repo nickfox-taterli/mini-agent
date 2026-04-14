@@ -10,12 +10,11 @@ const props = defineProps({
   toolCalling: { type: Boolean, default: false },
   toolCallingName: { type: String, default: '' },
   currentThinkingPhrase: { type: String, default: '' },
-  isThinkingExpanded: { type: Boolean, default: false },
   getRandomThinkingDonePhrase: { type: Function, required: true },
   getThinkingDuration: { type: Function, required: true }
 })
 
-const emit = defineEmits(['toggle-thinking', 'copy-code', 'regenerate'])
+const emit = defineEmits(['copy-code', 'regenerate', 'open-thinking-detail', 'open-tool-detail'])
 
 const isComplete = computed(() => !props.isLast || !props.loading)
 const copyLabel = ref('复制Markdown')
@@ -26,6 +25,19 @@ function handleCopyMarkdown() {
     setTimeout(() => { copyLabel.value = '复制Markdown' }, 2000)
   })
 }
+
+// 思考和工具调用标签互斥显示
+// 有工具调用时隐藏思考标签
+const showThinkingTag = computed(() => !!props.msg.reasoning)
+
+const latestToolCall = computed(() => {
+  const list = props.msg.toolCalls || []
+  if (!list.length) return null
+  const running = list.find(tc => tc.status === 'running')
+  if (running) return { call: running, index: list.indexOf(running) }
+  const last = list[list.length - 1]
+  return { call: last, index: list.length - 1 }
+})
 </script>
 
 <template>
@@ -40,25 +52,43 @@ function handleCopyMarkdown() {
           <span class="retrying-spinner"></span>
           <span>LLM服务排队中...</span>
         </div>
-        <!-- 正在努力干活提示 -->
-        <div v-if="workingHard && !msg.retrying && isLast" class="working-hard-indicator">
+        <!-- 正在努力干活提示: 工具调用时不显示 -->
+        <div v-if="workingHard && !msg.retrying && isLast && !toolCalling" class="working-hard-indicator">
           <span class="working-hard-spinner"></span>
           <span>正在非常努力干活...</span>
         </div>
-        <!-- 工具调用提示 -->
-        <div v-if="toolCalling" class="tool-calling-indicator">
-          <span class="tool-calling-spinner"></span>
-          <span>正在调用工具: {{ toolCallingName || '...' }}</span>
-        </div>
-        <!-- 思考块 -->
-        <div v-if="msg.reasoning" class="thinking-block">
-          <button class="thinking-toggle" @click="emit('toggle-thinking', idx)">
-            <span class="thinking-chevron" :class="{ expanded: isThinkingExpanded }">&#9654;</span>
-            <span class="thinking-label">
-              {{ msg.reasoningDone ? getRandomThinkingDonePhrase() : currentThinkingPhrase }} ({{ getThinkingDuration(msg) }})
-            </span>
+        <!-- 紧凑标签行: 思考 + 工具调用 -->
+        <div v-if="msg.reasoning || msg.toolCalls?.length || (toolCalling && isLast)" class="tags-row">
+          <!-- 思考标签: 与工具调用互斥,工具调用时隐藏 -->
+          <button
+            v-if="showThinkingTag"
+            class="detail-tag thinking-tag"
+            @click="emit('open-thinking-detail', idx)"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>
+            </svg>
+            <span>{{ msg.reasoningDone ? '思考了 ' + getThinkingDuration(msg) : currentThinkingPhrase }}</span>
           </button>
-          <div v-show="isThinkingExpanded" class="thinking-content markdown-body" v-html="msg.renderedReasoning"></div>
+          <!-- 工具调用标签 -->
+          <button
+            v-if="latestToolCall"
+            :key="latestToolCall.call.call_id || latestToolCall.call.display_name"
+            class="detail-tag tool-tag"
+            :class="{ 'tool-tag-running': latestToolCall.call.status === 'running' }"
+            @click="emit('open-tool-detail', { msgIdx: idx, toolIdx: latestToolCall.index })"
+          >
+            <span v-if="latestToolCall.call.status === 'running'" class="tool-tag-spinner"></span>
+            <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+            </svg>
+            <span>{{ latestToolCall.call.display_name }}</span>
+          </button>
+          <!-- 实时工具调用中(尚无持久化条目) -->
+          <div v-if="toolCalling && isLast && !msg.toolCalls?.length" class="detail-tag tool-tag tool-tag-running">
+            <span class="tool-tag-spinner"></span>
+            <span>{{ toolCallingName || '...' }}</span>
+          </div>
         </div>
         <!-- 回答内容 -->
         <div

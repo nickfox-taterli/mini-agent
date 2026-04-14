@@ -56,6 +56,12 @@ func BuildSystemPrompt(sk []Skill) string {
 	var b strings.Builder
 	b.WriteString("You can use local skills installed on the server.\n")
 	b.WriteString("When a request matches a skill, follow the corresponding SKILL.md.\n")
+	b.WriteString("Tool selection policy (STRICT):\n")
+	b.WriteString("1) First evaluate whether any installed skill can handle the task.\n")
+	b.WriteString("2) If yes, you MUST use `run_skill_bash` and skill workflow first.\n")
+	b.WriteString("3) Do NOT start with `python_*` or `code_*` containers when a matching skill exists.\n")
+	b.WriteString("4) `python_*` / `code_*` are fallback only when no skill fits, or the skill workflow clearly fails.\n")
+	b.WriteString("5) If using fallback containers, explicitly state why skill path is not used.\n")
 	b.WriteString("Installed skills:\n")
 	for _, item := range sk {
 		b.WriteString("- ")
@@ -68,7 +74,7 @@ func BuildSystemPrompt(sk []Skill) string {
 		b.WriteString(item.Path)
 		b.WriteString("\n")
 	}
-	b.WriteString("For skill execution, prefer tool `run_skill_bash` with skill_name and command.\n")
+	b.WriteString("For skill execution, use tool `run_skill_bash` with skill_name and command.\n")
 	b.WriteString("ALL intermediate/temporary files (generated scripts, API responses, JSON data, scratch files) MUST be written under /tmp/ - NEVER in the project directory or under the skill directory.\n")
 	b.WriteString("Only the final deliverable file should be written to FRONTEND_UPLOAD_DIR.\n")
 	b.WriteString("When a file is generated, return the absolute local file path first.\n")
