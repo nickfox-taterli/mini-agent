@@ -11,10 +11,10 @@ import (
 
 // Conversation 表示一个会话.
 type Conversation struct {
-	ID        string  `json:"id"`
-	Title     string  `json:"title"`
-	CreatedAt int64   `json:"createdAt"`
-	Messages  []Msg   `json:"messages,omitempty"`
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	CreatedAt int64  `json:"createdAt"`
+	Messages  []Msg  `json:"messages,omitempty"`
 }
 
 // Msg 表示一条消息.
@@ -25,9 +25,16 @@ type Msg struct {
 	ReasoningDone    bool     `json:"reasoningDone,omitempty"`
 	ThinkingDuration *float64 `json:"thinkingDuration,omitempty"`
 	ToolCalls        string   `json:"toolCalls,omitempty"`
+	TokenTotal       *int     `json:"tokenTotal,omitempty"`
+	TokenPerSecond   *float64 `json:"tokenPerSecond,omitempty"`
 }
 
 var globalDB *sql.DB
+
+const (
+	defaultTokenTotal     = 1
+	defaultTokenPerSecond = 1.0
+)
 
 // Init 初始化数据库连接并建表.
 func Init(dbPath string) error {
@@ -45,9 +52,20 @@ func Init(dbPath string) error {
 	if err := createTables(); err != nil {
 		return fmt.Errorf("create tables: %w", err)
 	}
-	// 迁移: 为已有数据库添加 tool_calls 列
-	globalDB.Exec(`ALTER TABLE messages ADD COLUMN tool_calls TEXT NOT NULL DEFAULT ''`)
+	// 迁移: 为已有数据库补齐新增列.
+	runMigration(`ALTER TABLE messages ADD COLUMN tool_calls TEXT NOT NULL DEFAULT ''`)
+	runMigration(`ALTER TABLE messages ADD COLUMN token_total INTEGER NOT NULL DEFAULT 1`)
+	runMigration(`ALTER TABLE messages ADD COLUMN token_per_second REAL NOT NULL DEFAULT 1`)
+	// 对历史无记录数据进行默认回填.
+	runMigration(`UPDATE messages SET token_total = 10 WHERE token_total IS NULL`)
+	runMigration(`UPDATE messages SET token_per_second = 10 WHERE token_per_second IS NULL`)
 	return nil
+}
+
+func runMigration(query string) {
+	if _, err := globalDB.Exec(query); err != nil {
+		// 忽略重复列等幂等迁移错误.
+	}
 }
 
 func createTables() error {
@@ -66,6 +84,8 @@ func createTables() error {
 			reasoning_done INTEGER NOT NULL DEFAULT 0,
 			thinking_duration REAL,
 			tool_calls TEXT NOT NULL DEFAULT '',
+			token_total INTEGER NOT NULL DEFAULT 10,
+			token_per_second REAL NOT NULL DEFAULT 10,
 			sort_order INTEGER NOT NULL
 		);
 	`)
@@ -116,7 +136,7 @@ func GetConversation(id string) (*Conversation, error) {
 
 func loadMessages(convID string) ([]Msg, error) {
 	rows, err := globalDB.Query(
-		`SELECT role, content, reasoning, reasoning_done, thinking_duration, tool_calls
+		`SELECT role, content, reasoning, reasoning_done, thinking_duration, tool_calls, token_total, token_per_second
 		 FROM messages WHERE conversation_id = ? ORDER BY sort_order ASC`, convID)
 	if err != nil {
 		return nil, err
@@ -128,13 +148,27 @@ func loadMessages(convID string) ([]Msg, error) {
 		var m Msg
 		var reasoningDone int
 		var thinkingDuration sql.NullFloat64
-		if err := rows.Scan(&m.Role, &m.Content, &m.Reasoning, &reasoningDone, &thinkingDuration, &m.ToolCalls); err != nil {
+		var tokenTotal sql.NullInt64
+		var tokenPerSecond sql.NullFloat64
+		if err := rows.Scan(
+			&m.Role, &m.Content, &m.Reasoning, &reasoningDone, &thinkingDuration, &m.ToolCalls, &tokenTotal, &tokenPerSecond,
+		); err != nil {
 			return nil, err
 		}
 		m.ReasoningDone = reasoningDone != 0
 		if thinkingDuration.Valid {
 			m.ThinkingDuration = &thinkingDuration.Float64
 		}
+		total := defaultTokenTotal
+		if tokenTotal.Valid {
+			total = int(tokenTotal.Int64)
+		}
+		speed := defaultTokenPerSecond
+		if tokenPerSecond.Valid {
+			speed = tokenPerSecond.Float64
+		}
+		m.TokenTotal = &total
+		m.TokenPerSecond = &speed
 		result = append(result, m)
 	}
 	if result == nil {
@@ -175,10 +209,18 @@ func insertMessage(tx *sql.Tx, convID string, m *Msg, order int) error {
 	if m.ReasoningDone {
 		done = 1
 	}
+	total := defaultTokenTotal
+	if m.TokenTotal != nil {
+		total = *m.TokenTotal
+	}
+	speed := defaultTokenPerSecond
+	if m.TokenPerSecond != nil {
+		speed = *m.TokenPerSecond
+	}
 	_, err := tx.Exec(
-		`INSERT INTO messages (conversation_id, role, content, reasoning, reasoning_done, thinking_duration, tool_calls, sort_order)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		convID, m.Role, m.Content, m.Reasoning, done, dur, m.ToolCalls, order)
+		`INSERT INTO messages (conversation_id, role, content, reasoning, reasoning_done, thinking_duration, tool_calls, token_total, token_per_second, sort_order)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		convID, m.Role, m.Content, m.Reasoning, done, dur, m.ToolCalls, total, speed, order)
 	return err
 }
 

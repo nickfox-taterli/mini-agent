@@ -12,6 +12,10 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
+  conversationStreaming: {
+    type: Boolean,
+    default: false
+  },
   attachedFiles: {
     type: Array,
     default: () => []
@@ -31,6 +35,10 @@ const props = defineProps({
   apiBase: {
     type: String,
     default: ''
+  },
+  tokenStats: {
+    type: Object,
+    default: () => ({ estimatedTokens: 0, tokensPerSecond: 0, coefficient: 1 })
   }
 })
 
@@ -49,7 +57,9 @@ function triggerFileInput() {
   fileInputRef.value?.click()
 }
 
-const canSend = computed(() => (props.input.trim() !== '' || props.attachedFiles.length > 0) && !props.loading)
+const canSend = computed(() => {
+  return (props.input.trim() !== '' || props.attachedFiles.length > 0) && !props.loading && !props.conversationStreaming
+})
 </script>
 
 <template>
@@ -64,7 +74,7 @@ const canSend = computed(() => (props.input.trim() !== '' || props.attachedFiles
       multiple
       @change="emit('file-select', $event)"
     />
-    <button class="attach-btn" @click="triggerFileInput" :disabled="loading || uploading" title="上传文件">
+    <button class="attach-btn" @click="triggerFileInput" :disabled="loading || uploading || conversationStreaming" title="上传文件">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M21 11v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6"/>
         <polyline points="17 8 12 3 7 8"/>
@@ -74,30 +84,30 @@ const canSend = computed(() => (props.input.trim() !== '' || props.attachedFiles
     <textarea
       :value="input"
       class="input"
-      placeholder="尽管问..."
+      :placeholder="conversationStreaming ? '另一页面正在生成中...' : '尽管问...'"
       rows="1"
-      :disabled="loading"
+      :disabled="loading || conversationStreaming"
       @input="emit('update:input', $event.target.value); $emit('input', $event)"
       @keydown.enter.exact.prevent="emit('send')"
     />
     <div class="send-wrapper">
-      <div v-if="!input.trim() && !loading && attachedFiles.length === 0" class="send-tooltip">请输入你的问题</div>
+      <div v-if="conversationStreaming" class="send-tooltip">另一页面正在生成, 暂不可发送</div>
+      <div v-else-if="!input.trim() && !loading && attachedFiles.length === 0" class="send-tooltip">请输入你的问题</div>
       <button
         class="send"
         :class="{
-          'send-active': (input.trim() || attachedFiles.length > 0) && !loading,
+          'send-active': (input.trim() || attachedFiles.length > 0) && !loading && !conversationStreaming,
           'send-loading': loading
         }"
-        :disabled="!input.trim() && attachedFiles.length === 0 && !loading"
+        :disabled="(!input.trim() && attachedFiles.length === 0 && !loading) || conversationStreaming"
         @click="emit('send')"
       >
         <!-- 空状态: 暗淡箭头 -->
-        <svg v-if="!input.trim() && attachedFiles.length === 0 && !loading" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg v-if="(!input.trim() && attachedFiles.length === 0 && !loading) || conversationStreaming" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="22" y1="2" x2="11" y2="13"/>
           <polygon points="22 2 15 22 11 13 2 9 22 2"/>
         </svg>
-        <!-- 有输入: 点亮箭头 -->
-        <svg v-else-if="(input.trim() || attachedFiles.length > 0) && !loading" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg v-else-if="canSend" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="22" y1="2" x2="11" y2="13"/>
           <polygon points="22 2 15 22 11 13 2 9 22 2"/>
         </svg>
@@ -123,6 +133,6 @@ const canSend = computed(() => (props.input.trim() !== '' || props.attachedFiles
     </div>
   </div>
   <div class="meta">
-    后端: {{ selectedBackendId || '未连接' }} | API: {{ apiBase }}
+    后端: {{ selectedBackendId || '未连接' }} | API: {{ apiBase }} | Token: {{ tokenStats.estimatedTokens }} | Token/s: {{ tokenStats.tokensPerSecond.toFixed(2) }} | 系数: {{ tokenStats.coefficient }}
   </div>
 </template>

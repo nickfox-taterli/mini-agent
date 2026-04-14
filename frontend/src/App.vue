@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import Sidebar from './components/Sidebar.vue'
 import ChatMessage from './components/ChatMessage.vue'
 import Composer from './components/Composer.vue'
@@ -22,8 +22,8 @@ const {
 
 const {
   loading, toolCalling, toolCallingName, workingHard, currentThinkingPhrase,
-  backends, selectedBackendId, now, sendMessage, regenerate, loadBackends, cleanup,
-  getRandomThinkingDonePhrase, getThinkingDuration
+  backends, selectedBackendId, now, conversationStreaming, tokenStats, sendMessage, regenerate, loadBackends, cleanup,
+  getRandomThinkingDonePhrase, getThinkingDuration, syncConversationState
 } = useChatStream(apiBase, renderMarkdown)
 
 // 本地状态
@@ -69,6 +69,7 @@ const titleManuallySet = reactive(new Map())
 const uploading = ref(false)
 const attachedFiles = ref([])
 const isDragging = ref(false)
+let conversationStateTimer = null
 
 // 快捷键
 function handleKeydown(e) {
@@ -104,6 +105,7 @@ function autoResize() {
 
 // 发送消息包装
 async function handleSend() {
+  await syncConversationState(currentConversationId.value)
   await sendMessage({
     input, messages, attachedFiles, textareaRef, expandedThinking,
     saveCurrentMessages: () => saveCurrentMessages(messages),
@@ -116,7 +118,8 @@ async function handleSend() {
 async function handleRegenerate(idx) {
   await regenerate({
     idx, messages, expandedThinking,
-    saveCurrentMessages: () => saveCurrentMessages(messages)
+    saveCurrentMessages: () => saveCurrentMessages(messages),
+    currentConversationId
   })
 }
 
@@ -256,11 +259,27 @@ onMounted(async () => {
   }
 
   loadBackends()
+
+  if (currentConversationId.value) {
+    await syncConversationState(currentConversationId.value)
+  }
+  conversationStateTimer = setInterval(() => {
+    if (loading.value) return
+    syncConversationState(currentConversationId.value)
+  }, 1500)
 })
 
 onUnmounted(() => {
   cleanup()
   document.removeEventListener('keydown', handleKeydown)
+  if (conversationStateTimer) {
+    clearInterval(conversationStateTimer)
+    conversationStateTimer = null
+  }
+})
+
+watch(currentConversationId, (id) => {
+  syncConversationState(id)
 })
 </script>
 
@@ -319,6 +338,8 @@ onUnmounted(() => {
             :is-dragging="isDragging"
             :selected-backend-id="selectedBackendId"
             :api-base="apiBase"
+            :conversation-streaming="conversationStreaming"
+            :token-stats="tokenStats"
             @update:input="input = $event"
             @send="handleSend"
             @file-select="handleFileSelect"

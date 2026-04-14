@@ -45,6 +45,7 @@ Base URL(本地默认): `http://127.0.0.1:18888`
 ```json
 {
   "backend_id": "minimax-main",
+  "conversation_id": "conv-1713062400000-abc123",
   "messages": [
     {"role": "user", "content": "你好"}
   ]
@@ -54,6 +55,7 @@ Base URL(本地默认): `http://127.0.0.1:18888`
 字段约束:
 
 - `backend_id`: 可选,留空时走默认启用后端
+- `conversation_id`: 可选,用于会话级流式锁. 同一 `conversation_id` 在未结束前不能并发发起新流式请求
 - `messages`: 必填,至少 1 条
 - `role`: 仅允许 `system/user/assistant`
 - `content`: 非空字符串
@@ -114,6 +116,16 @@ SSE 事件:
 ## 错误语义
 
 - 请求体不合法: HTTP `400`(普通 JSON 错误响应)
+- 同一会话正在流式中: HTTP `409`, 响应:
+
+```json
+{
+  "error": "conversation is streaming",
+  "code": "conversation_streaming",
+  "is_streaming": true
+}
+```
+
 - 上游 429/529/5xx 或网络抖动: 后端自动重试 (最多 4 次), 每次重试前发送 SSE `retrying` 事件; 重试耗尽后发送 SSE `error` 事件
 - 其他上游失败: SSE `error` 事件(HTTP 状态仍为 `200`)
 
@@ -200,10 +212,24 @@ SSE 事件:
         "content": "你好! 有什么可以帮助你的?",
         "reasoning": "用户在打招呼...",
         "reasoningDone": true,
-        "thinkingDuration": 1.23
+        "thinkingDuration": 1.23,
+        "tokenTotal": 128,
+        "tokenPerSecond": 32.5
       }
     ]
   }
+}
+```
+
+## GET /api/conversations/:id/state
+
+用途: 获取会话当前是否处于流式生成中.
+
+响应示例:
+
+```json
+{
+  "is_streaming": false
 }
 ```
 
@@ -218,10 +244,16 @@ SSE 事件:
   "title": "新的对话标题",
   "messages": [
     {"role": "user", "content": "你好"},
-    {"role": "assistant", "content": "你好!", "reasoningDone": true}
+    {"role": "assistant", "content": "你好!", "reasoningDone": true, "tokenTotal": 96, "tokenPerSecond": 24.0}
   ]
 }
 ```
+
+消息字段说明补充:
+
+- `tokenTotal`: Token 总量估算值, 整数.
+- `tokenPerSecond`: Token 速度估算值, 浮点数.
+- 历史无记录或未传值时, 后端默认补为 `10` 和 `10`.
 
 响应示例:
 

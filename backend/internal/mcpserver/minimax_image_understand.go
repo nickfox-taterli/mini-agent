@@ -147,7 +147,7 @@ func resolveImageToBase64DataURL(imageURL string) (string, error) {
 
 	// 前端 URL -> 映射为本地路径
 	if strings.HasPrefix(imageURL, frontendURL+"/") {
-		localPath, err := frontendURLToLocalPath(imageURL)
+		localPath, err := ConvertFrontendURLToLocalPathExported(imageURL)
 		if err == nil {
 			return readImageAsDataURL(localPath)
 		}
@@ -162,31 +162,6 @@ func resolveImageToBase64DataURL(imageURL string) (string, error) {
 
 	// 本地路径 -> 直接读取
 	return readImageAsDataURL(imageURL)
-}
-
-// frontendURLToLocalPath 将前端 URL 映射为本地文件路径.
-// 例如: http://127.0.0.1:18889/upload/2026/04/15/abc.png -> frontend/upload/2026/04/15/abc.png
-func frontendURLToLocalPath(fileURL string) (string, error) {
-	// 去掉前端 URL 前缀, 得到相对路径
-	relPath := strings.TrimPrefix(fileURL, frontendURL+"/")
-
-	// 解析前端目录
-	frontendDir, err := resolveFrontendDir([]string{
-		filepath.Join("..", "frontend"),
-		filepath.Join("..", "..", "frontend"),
-		"frontend",
-	})
-	if err != nil {
-		return "", fmt.Errorf("resolve frontend dir: %w", err)
-	}
-
-	localPath := filepath.Join(frontendDir, relPath)
-	if _, err := os.Stat(localPath); err != nil {
-		return "", fmt.Errorf("file not found: %s", localPath)
-	}
-
-	log.Printf("[minimax-vlm] mapped frontend URL to local path: %s -> %s", fileURL, localPath)
-	return localPath, nil
 }
 
 // downloadImageAsDataURL 下载 HTTP 图片并编码为 base64 data URL.

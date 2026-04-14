@@ -10,15 +10,37 @@ const THINKING_PHRASES = [
 ]
 const THINKING_DONE_PHRASES = ['大功告成']
 
+const DEFAULT_TOKEN_ESTIMATE_COEFFICIENT = 1
+
+function parseTokenEstimateCoefficient(value) {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_TOKEN_ESTIMATE_COEFFICIENT
+  return parsed
+}
+
+function estimateTokenCountFromText(text, coefficient) {
+  if (!text) return 0
+  const utf8Bytes = new TextEncoder().encode(text).length
+  const baseTokenEstimate = utf8Bytes / 4
+  return Math.max(0, Math.round(baseTokenEstimate * coefficient))
+}
+
 export function useChatStream(apiBase, renderMarkdown) {
   // 状态
   const loading = ref(false)
+  const conversationStreaming = ref(false)
   const toolCalling = ref(false)
   const toolCallingName = ref('')
   const workingHard = ref(false)
   const currentThinkingPhrase = ref('')
   const backends = ref([])
   const selectedBackendId = ref('')
+  const tokenEstimateCoefficient = parseTokenEstimateCoefficient(import.meta.env.VITE_TOKEN_ESTIMATE_COEFFICIENT)
+  const tokenStats = reactive({
+    estimatedTokens: 0,
+    tokensPerSecond: 0,
+    coefficient: tokenEstimateCoefficient
+  })
 
   // 内部状态
   let toolCallStartTime = 0
@@ -26,8 +48,36 @@ export function useChatStream(apiBase, renderMarkdown) {
   let lastOutputTime = 0
   let thinkingPhraseTimer = null
   let streamController = null
+  let tokenStreamStartTime = 0
   const now = ref(Date.now())
   let timerInterval = null
+
+  function resetTokenStats() {
+    tokenStats.estimatedTokens = 0
+    tokenStats.tokensPerSecond = 0
+    tokenStreamStartTime = 0
+  }
+
+  function refreshTokenStats(assistant) {
+    const fullText = `${assistant.reasoning || ''}${assistant.content || ''}`
+    tokenStats.estimatedTokens = estimateTokenCountFromText(fullText, tokenEstimateCoefficient)
+    if (!tokenStreamStartTime || tokenStats.estimatedTokens <= 0) {
+      tokenStats.tokensPerSecond = 0
+      assistant.tokenTotal = tokenStats.estimatedTokens
+      assistant.tokenPerSecond = tokenStats.tokensPerSecond
+      return
+    }
+    const elapsedSeconds = (Date.now() - tokenStreamStartTime) / 1000
+    if (elapsedSeconds <= 0) {
+      tokenStats.tokensPerSecond = 0
+      assistant.tokenTotal = tokenStats.estimatedTokens
+      assistant.tokenPerSecond = tokenStats.tokensPerSecond
+      return
+    }
+    tokenStats.tokensPerSecond = Number((tokenStats.estimatedTokens / elapsedSeconds).toFixed(2))
+    assistant.tokenTotal = tokenStats.estimatedTokens
+    assistant.tokenPerSecond = tokenStats.tokensPerSecond
+  }
 
   // SSE 解析
   function parseSSEBlock(block) {
@@ -141,7 +191,7 @@ export function useChatStream(apiBase, renderMarkdown) {
   }
 
   // 流式处理核心逻辑
-  async function _streamAssistant(assistant, messages, saveCurrentMessages) {
+  async function _streamAssistant(assistant, messages, saveCurrentMessages, conversationId) {
     function appendTextStep(type, delta) {
       if (!delta) return
       const timeline = assistant.processTimeline || (assistant.processTimeline = [])
@@ -200,6 +250,9 @@ export function useChatStream(apiBase, renderMarkdown) {
     }
 
     loading.value = true
+    conversationStreaming.value = true
+    tokenStreamStartTime = Date.now()
+    resetTokenStats()
     startTimer()
     startWorkingHardTimer()
     streamController = new AbortController()
@@ -207,11 +260,21 @@ export function useChatStream(apiBase, renderMarkdown) {
     try {
       const res = await fetch(`${apiBase}/api/chat/stream`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ backend_id: selectedBackendId.value || undefined, messages: toChatMessages(messages) }),
+        body: JSON.stringify({
+          backend_id: selectedBackendId.value || undefined,
+          conversation_id: conversationId || undefined,
+          messages: toChatMessages(messages)
+        }),
         signal: streamController.signal
       })
 
-      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`)
+      if (!res.ok || !res.body) {
+        if (res.status === 409) {
+          conversationStreaming.value = true
+          throw new Error('当前会话正在由其他页面生成, 请稍候')
+        }
+        throw new Error(`HTTP ${res.status}`)
+      }
 
       const reader = res.body.getReader()
       const decoder = new TextDecoder('utf-8')
@@ -235,6 +298,7 @@ export function useChatStream(apiBase, renderMarkdown) {
             assistant.reasoning += delta
             assistant.renderedReasoning = renderMarkdown(assistant.reasoning)
             appendTextStep('reasoning', delta)
+            refreshTokenStats(assistant)
             if (wasEmpty && assistant.reasoning) startThinkingPhraseCycle()
             await scrollToBottom()
           }
@@ -301,6 +365,7 @@ export function useChatStream(apiBase, renderMarkdown) {
             assistant.content += delta
             assistant.renderedContent = renderMarkdown(assistant.content)
             appendTextStep('content', delta)
+            refreshTokenStats(assistant)
             assistant.retrying = null; await scrollToBottom()
           }
 
@@ -318,6 +383,7 @@ export function useChatStream(apiBase, renderMarkdown) {
             assistant.reasoningDone = true; doneReceived = true
             assistant.thinkingDuration = (Date.now() - assistant.thinkingStartTime) / 1000
             assistant.renderedContent = renderMarkdown(assistant.content)
+            refreshTokenStats(assistant)
             await scrollToBottom(); break
           }
 
@@ -327,6 +393,7 @@ export function useChatStream(apiBase, renderMarkdown) {
             resetWorkingHard(); assistant.reasoningDone = true
             assistant.thinkingDuration = (Date.now() - assistant.thinkingStartTime) / 1000
             assistant.renderedContent = renderMarkdown(assistant.content)
+            refreshTokenStats(assistant)
             doneReceived = true; break
           }
         }
@@ -336,15 +403,18 @@ export function useChatStream(apiBase, renderMarkdown) {
       assistant.content += `\n[Error] ${err.message || 'request failed'}`
       assistant.thinkingDuration = (Date.now() - assistant.thinkingStartTime) / 1000
       assistant.renderedContent = renderMarkdown(assistant.content)
+      refreshTokenStats(assistant)
     } finally {
       stopTimer(); stopThinkingPhraseCycle(); resetWorkingHard()
       loading.value = false; streamController = null
+      await syncConversationState(conversationId)
       await scrollToBottom(); saveCurrentMessages()
     }
   }
 
   async function sendMessage({ input, messages, attachedFiles, textareaRef, expandedThinking, saveCurrentMessages, generateTitleAsync, currentConversationId }) {
     if (loading.value) { stopGeneration(); return }
+    if (conversationStreaming.value) return
     if (!input.value.trim() && attachedFiles.value.length === 0) return
 
     const userText = input.value.trim()
@@ -362,7 +432,8 @@ export function useChatStream(apiBase, renderMarkdown) {
 
     const userMsg = reactive({
       role: 'user', content: finalText,
-      renderedContent: renderMarkdown(finalText)
+      renderedContent: renderMarkdown(finalText),
+      tokenTotal: null, tokenPerSecond: null
     })
     messages.value.push(userMsg)
     saveCurrentMessages()
@@ -371,25 +442,28 @@ export function useChatStream(apiBase, renderMarkdown) {
     const assistant = reactive({
       role: 'assistant', reasoning: '', content: '', reasoningDone: false,
       thinkingDuration: null, thinkingStartTime: Date.now(), retrying: null,
-      renderedContent: '', renderedReasoning: '', toolCalls: [], processTimeline: []
+      renderedContent: '', renderedReasoning: '', toolCalls: [], processTimeline: [],
+      tokenTotal: null, tokenPerSecond: null
     })
     messages.value.push(assistant)
     await nextTick()
     window.scrollTo(0, document.body.scrollHeight)
 
-    await _streamAssistant(assistant, messages, saveCurrentMessages)
+    await _streamAssistant(assistant, messages, saveCurrentMessages, currentConversationId.value)
   }
 
   // 重新生成指定位置的助手回复
-  async function regenerate({ idx, messages, saveCurrentMessages, expandedThinking }) {
+  async function regenerate({ idx, messages, saveCurrentMessages, expandedThinking, currentConversationId }) {
     if (loading.value) return
+    if (conversationStreaming.value) return
     // 删除旧的助手消息
     messages.value.splice(idx, 1)
     // 创建新的助手消息占位
     const assistant = reactive({
       role: 'assistant', reasoning: '', content: '', reasoningDone: false,
       thinkingDuration: null, thinkingStartTime: Date.now(), retrying: null,
-      renderedContent: '', renderedReasoning: '', toolCalls: [], processTimeline: []
+      renderedContent: '', renderedReasoning: '', toolCalls: [], processTimeline: [],
+      tokenTotal: null, tokenPerSecond: null
     })
     messages.value.push(assistant)
     await nextTick()
@@ -398,7 +472,21 @@ export function useChatStream(apiBase, renderMarkdown) {
     // 重置该消息的思考展开状态
     expandedThinking.set(idx, false)
 
-    await _streamAssistant(assistant, messages, saveCurrentMessages)
+    await _streamAssistant(assistant, messages, saveCurrentMessages, currentConversationId.value)
+  }
+
+  async function syncConversationState(conversationId) {
+    const id = (conversationId || '').trim()
+    if (!id) {
+      conversationStreaming.value = false
+      return
+    }
+    try {
+      const res = await fetch(`${apiBase}/api/conversations/${encodeURIComponent(id)}/state`)
+      if (!res.ok) return
+      const data = await res.json()
+      conversationStreaming.value = !!data.is_streaming
+    } catch {}
   }
 
   function cleanup() {
@@ -409,8 +497,8 @@ export function useChatStream(apiBase, renderMarkdown) {
 
   return {
     loading, toolCalling, toolCallingName, workingHard, currentThinkingPhrase,
-    backends, selectedBackendId, now,
+    backends, selectedBackendId, now, conversationStreaming, tokenStats,
     sendMessage, regenerate, stopGeneration, loadBackends, cleanup,
-    getRandomThinkingDonePhrase, getThinkingDuration
+    getRandomThinkingDonePhrase, getThinkingDuration, syncConversationState
   }
 }

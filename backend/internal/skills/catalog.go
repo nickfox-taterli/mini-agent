@@ -75,6 +75,13 @@ func BuildSystemPrompt(sk []Skill) string {
 		b.WriteString("\n")
 	}
 	b.WriteString("For skill execution, use tool `run_skill_bash` with skill_name and command.\n")
+	b.WriteString("Skill execution discipline (STRICT):\n")
+	b.WriteString("1) Before running a command, use the skill's Task Routing section to choose the exact script path.\n")
+	b.WriteString("2) Prefer `python3 SKILL_DIR/scripts/<script>.py ...` over guessed filenames.\n")
+	b.WriteString("3) Do NOT guess script names like `analyze_file.py` when Task Routing provides a script.\n")
+	b.WriteString("4) If SKILL.md has 'Utility Scripts' or command examples, commands MUST be selected from those entries first.\n")
+	b.WriteString("5) If first command fails, correct to the mapped script immediately; avoid repeated exploratory retries.\n")
+	b.WriteString("6) Exploration budget: at most one lightweight discovery command (for example `ls scripts/`); then execute mapped script directly.\n")
 	b.WriteString("ALL intermediate/temporary files (generated scripts, API responses, JSON data, scratch files) MUST be written under /tmp/ - NEVER in the project directory or under the skill directory.\n")
 	b.WriteString("Only the final deliverable file should be written to FRONTEND_UPLOAD_DIR.\n")
 	b.WriteString("When a file is generated, return the absolute local file path first.\n")

@@ -11,7 +11,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -27,12 +29,62 @@ type Server struct {
 	host        string
 	port        int
 	frontendURL string
+	streamState *conversationStreamRegistry
 }
 
 type streamChatReq struct {
-	BackendID string            `json:"backend_id"`
-	Messages  []backend.Message `json:"messages"`
+	BackendID      string            `json:"backend_id"`
+	ConversationID string            `json:"conversation_id"`
+	Messages       []backend.Message `json:"messages"`
 }
+
+type conversationStreamState struct {
+	IsStreaming bool `json:"is_streaming"`
+}
+
+type conversationStreamRegistry struct {
+	mu        sync.Mutex
+	streaming map[string]bool
+}
+
+func newConversationStreamRegistry() *conversationStreamRegistry {
+	return &conversationStreamRegistry{
+		streaming: make(map[string]bool),
+	}
+}
+
+func (r *conversationStreamRegistry) acquire(conversationID string) bool {
+	if strings.TrimSpace(conversationID) == "" {
+		return true
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.streaming[conversationID] {
+		return false
+	}
+	r.streaming[conversationID] = true
+	return true
+}
+
+func (r *conversationStreamRegistry) release(conversationID string) {
+	if strings.TrimSpace(conversationID) == "" {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.streaming, conversationID)
+}
+
+func (r *conversationStreamRegistry) isStreaming(conversationID string) bool {
+	if strings.TrimSpace(conversationID) == "" {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.streaming[conversationID]
+}
+
+var attachmentLinkPattern = regexp.MustCompile(`\[[^\]]*附件[^\]]*\]\((https?://[^)\s]+)\)`)
 
 func New(m *backend.Manager, host string, port int, frontendURL string) *Server {
 	r := gin.Default()
@@ -47,7 +99,14 @@ func New(m *backend.Manager, host string, port int, frontendURL string) *Server 
 
 	mcpserver.InitConfig(frontendURL)
 
-	s := &Server{r: r, m: m, host: host, port: port, frontendURL: frontendURL}
+	s := &Server{
+		r:           r,
+		m:           m,
+		host:        host,
+		port:        port,
+		frontendURL: frontendURL,
+		streamState: newConversationStreamRegistry(),
+	}
 	s.mountRoutes()
 	return s
 }
@@ -78,6 +137,7 @@ func (s *Server) mountRoutes() {
 	s.r.GET("/api/conversations", s.handleListConversations)
 	s.r.POST("/api/conversations", s.handleCreateConversation)
 	s.r.GET("/api/conversations/:id", s.handleGetConversation)
+	s.r.GET("/api/conversations/:id/state", s.handleGetConversationState)
 	s.r.PUT("/api/conversations/:id", s.handleUpdateConversation)
 	s.r.DELETE("/api/conversations/:id", s.handleDeleteConversation)
 
@@ -210,6 +270,37 @@ func (s *Server) handleStreamChat(c *gin.Context) {
 		}
 	}
 
+	req.Messages = preprocessUploadedFilePaths(req.Messages)
+	conversationID := strings.TrimSpace(req.ConversationID)
+	stopWatchRelease := make(chan struct{})
+	if conversationID != "" {
+		if !s.streamState.acquire(conversationID) {
+			c.JSON(http.StatusConflict, gin.H{
+				"error":        "conversation is streaming",
+				"code":         "conversation_streaming",
+				"is_streaming": true,
+			})
+			return
+		}
+		var releaseOnce sync.Once
+		release := func() {
+			releaseOnce.Do(func() {
+				s.streamState.release(conversationID)
+			})
+		}
+		defer func() {
+			close(stopWatchRelease)
+			release()
+		}()
+		go func(ctxDone <-chan struct{}) {
+			select {
+			case <-ctxDone:
+				release()
+			case <-stopWatchRelease:
+			}
+		}(c.Request.Context().Done())
+	}
+
 	adapter, err := s.m.Pick(req.BackendID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -246,6 +337,58 @@ func (s *Server) handleStreamChat(c *gin.Context) {
 	if err := adapter.StreamChat(c.Request.Context(), backend.StreamRequest{Messages: req.Messages}, emit); err != nil {
 		_ = emit("error", map[string]string{"message": err.Error()})
 	}
+}
+
+// preprocessUploadedFilePaths 将用户消息中的附件 URL 补充为本地绝对路径提示.
+// 示例: [附件: a.xls](http://127.0.0.1:18889/upload/...) -> ... [本地路径: /abs/path/a.xls]
+func preprocessUploadedFilePaths(messages []backend.Message) []backend.Message {
+	out := make([]backend.Message, 0, len(messages))
+	for _, msg := range messages {
+		next := msg
+		if msg.Role == "user" && strings.Contains(msg.Content, "附件") {
+			next.Content = enrichAttachmentLinksWithLocalPath(msg.Content)
+		}
+		out = append(out, next)
+	}
+	return out
+}
+
+func enrichAttachmentLinksWithLocalPath(content string) string {
+	if strings.TrimSpace(content) == "" {
+		return content
+	}
+	matches := attachmentLinkPattern.FindAllStringSubmatchIndex(content, -1)
+	if len(matches) == 0 {
+		return content
+	}
+
+	var b strings.Builder
+	last := 0
+	for _, m := range matches {
+		if len(m) < 4 {
+			continue
+		}
+		fullStart, fullEnd := m[0], m[1]
+		urlStart, urlEnd := m[2], m[3]
+		if fullStart < last || urlStart < 0 || urlEnd > len(content) {
+			continue
+		}
+		b.WriteString(content[last:fullStart])
+		segment := content[fullStart:fullEnd]
+		url := content[urlStart:urlEnd]
+		localPath, err := mcpserver.ConvertFrontendURLToLocalPathExported(url)
+		if err != nil {
+			b.WriteString(segment)
+		} else {
+			b.WriteString(segment)
+			b.WriteString(" [本地路径: ")
+			b.WriteString(localPath)
+			b.WriteString("]")
+		}
+		last = fullEnd
+	}
+	b.WriteString(content[last:])
+	return b.String()
 }
 
 func validRole(role string) bool {
@@ -320,6 +463,19 @@ func (s *Server) handleGetConversation(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"conversation": conv})
 }
 
+// handleGetConversationState 获取会话流式状态.
+func (s *Server) handleGetConversationState(c *gin.Context) {
+	id := strings.TrimSpace(c.Param("id"))
+	if id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "conversation id is required"})
+		return
+	}
+	state := conversationStreamState{
+		IsStreaming: s.streamState.isStreaming(id),
+	}
+	c.JSON(http.StatusOK, state)
+}
+
 // handleUpdateConversation 更新会话 (标题 + 消息).
 func (s *Server) handleUpdateConversation(c *gin.Context) {
 	id := c.Param("id")
@@ -349,7 +505,7 @@ func (s *Server) handleUpdateConversation(c *gin.Context) {
 			return
 		}
 	}
-	if req.Messages != nil {
+	if len(req.Messages) > 0 {
 		if err := db.SaveMessages(id, req.Messages); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return

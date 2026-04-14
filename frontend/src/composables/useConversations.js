@@ -44,18 +44,28 @@ export function useConversations(renderMarkdown, apiBase) {
   // 将后端消息格式转换为前端运行时格式 (添加渲染字段)
   function toRuntimeMessages(msgs) {
     return msgs.map(m => {
+      let toolCalls = m.toolCalls
+      if (typeof toolCalls === 'string') {
+        try { toolCalls = JSON.parse(toolCalls) } catch { toolCalls = [] }
+      }
+      let processTimeline = m.processTimeline
+      if (typeof processTimeline === 'string') {
+        try { processTimeline = JSON.parse(processTimeline) } catch { processTimeline = [] }
+      }
       const base = {
         role: m.role, content: m.content,
         renderedContent: renderMarkdown(m.content),
         reasoning: m.reasoning || '', reasoningDone: m.reasoningDone || false,
-        thinkingDuration: m.thinkingDuration || null
+        thinkingDuration: m.thinkingDuration || null,
+        tokenTotal: m.tokenTotal ?? null,
+        tokenPerSecond: m.tokenPerSecond ?? null
       }
       if (m.role === 'assistant') {
         base.renderedReasoning = renderMarkdown(m.reasoning || '')
         base.thinkingStartTime = null
         base.retrying = null
-        base.toolCalls = m.toolCalls || []
-        base.processTimeline = m.processTimeline || []
+        base.toolCalls = toolCalls || []
+        base.processTimeline = processTimeline || []
       }
       return { ...base }
     })
@@ -66,8 +76,10 @@ export function useConversations(renderMarkdown, apiBase) {
     return messages.value.map(m => ({
       role: m.role, content: m.content, reasoning: m.reasoning || '',
       reasoningDone: m.reasoningDone || false, thinkingDuration: m.thinkingDuration || null,
-      toolCalls: m.toolCalls || [],
-      processTimeline: m.processTimeline || []
+      tokenTotal: m.tokenTotal ?? null,
+      tokenPerSecond: m.tokenPerSecond ?? null,
+      toolCalls: JSON.stringify(m.toolCalls || []),
+      processTimeline: JSON.stringify(m.processTimeline || [])
     }))
   }
 
@@ -154,22 +166,32 @@ export function useConversations(renderMarkdown, apiBase) {
     try {
       // 本地会话有消息了 -> 先 POST 创建, 再标记为已持久化
       if (isLocalOnly) {
-        await fetch(`${apiBase}/api/conversations`, {
+        const res = await fetch(`${apiBase}/api/conversations`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: conv.id, title, createdAt: conv.createdAt })
         })
+        if (!res.ok) {
+          console.error('saveCurrentMessages: failed to create conversation', res.status, await res.text())
+          return
+        }
         localOnlyIds.delete(currentConversationId.value)
       }
 
-      await fetch(`${apiBase}/api/conversations/${currentConversationId.value}`, {
+      const res = await fetch(`${apiBase}/api/conversations/${currentConversationId.value}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, messages: storedMsgs })
       })
+      if (!res.ok) {
+        console.error('saveCurrentMessages: failed to save messages', res.status, await res.text())
+        return
+      }
       // 同步更新本地 title
       conv.title = title
-    } catch {}
+    } catch (e) {
+      console.error('saveCurrentMessages: error', e)
+    }
   }
 
   async function loadLatestConversation(messages, expandedThinking) {
