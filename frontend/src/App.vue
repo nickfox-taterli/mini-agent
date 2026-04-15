@@ -71,6 +71,18 @@ const attachedFiles = ref([])
 const isDragging = ref(false)
 let conversationStateTimer = null
 
+function shouldPollConversationState() {
+  return !!currentConversationId.value &&
+    !document.hidden &&
+    (loading.value || conversationStreaming.value)
+}
+
+function handleVisibilityChange() {
+  if (!document.hidden && currentConversationId.value) {
+    syncConversationState(currentConversationId.value)
+  }
+}
+
 // 快捷键
 function handleKeydown(e) {
   if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
@@ -251,6 +263,7 @@ onMounted(async () => {
   loadSidebarState()
   await loadConversations()
   document.addEventListener('keydown', handleKeydown)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 
   if (conversations.value.length === 0) {
     createNewConversation(messages, expandedThinking)
@@ -264,7 +277,7 @@ onMounted(async () => {
     await syncConversationState(currentConversationId.value)
   }
   conversationStateTimer = setInterval(() => {
-    if (loading.value) return
+    if (!shouldPollConversationState()) return
     syncConversationState(currentConversationId.value)
   }, 1500)
 })
@@ -272,6 +285,7 @@ onMounted(async () => {
 onUnmounted(() => {
   cleanup()
   document.removeEventListener('keydown', handleKeydown)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
   if (conversationStateTimer) {
     clearInterval(conversationStateTimer)
     conversationStateTimer = null
