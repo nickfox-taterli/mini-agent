@@ -20,6 +20,10 @@ var toolDisplayNames = map[string]string{
 	"code_session_init":         "通用代码会话初始化",
 	"code_run":                  "通用代码执行",
 	"code_session_close":        "通用代码会话关闭",
+	"libreoffice_convert":       "LO 文档格式转换",
+	"libreoffice_extract_text":  "LO 文档文本提取",
+	"libreoffice_batch_convert": "LO 批量格式转换",
+	"libreoffice_read_metadata": "LO 文档属性读取",
 }
 
 // ToolDisplayName 返回工具的友好显示名, 未匹配时返回原始名.
@@ -257,6 +261,75 @@ func ExecuteToolByJSON(name string, rawArgs string) (map[string]any, error) {
 		return map[string]any{
 			"session_id": out.SessionID,
 			"closed":     out.Closed,
+		}, nil
+	case "libreoffice_convert":
+		var in libreofficeConvertInput
+		if rawArgs != "" {
+			if err := json.Unmarshal([]byte(rawArgs), &in); err != nil {
+				return nil, fmt.Errorf("invalid libreoffice_convert arguments: %w", err)
+			}
+		}
+		out, err := libreofficeConvertLocal(in)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{
+			"source_path": out.SourcePath,
+			"output_path": out.OutputPath,
+			"output_url":  out.OutputURL,
+			"output_name": out.OutputName,
+			"size_bytes":  out.SizeBytes,
+			"duration_ms": out.DurationMs,
+		}, nil
+	case "libreoffice_extract_text":
+		var in libreofficeExtractTextInput
+		if rawArgs != "" {
+			if err := json.Unmarshal([]byte(rawArgs), &in); err != nil {
+				return nil, fmt.Errorf("invalid libreoffice_extract_text arguments: %w", err)
+			}
+		}
+		out, err := libreofficeExtractTextLocal(in)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{
+			"source_path":  out.SourcePath,
+			"text_content": out.TextContent,
+			"char_count":   out.CharCount,
+			"duration_ms":  out.DurationMs,
+		}, nil
+	case "libreoffice_batch_convert":
+		var in libreofficeBatchConvertInput
+		if rawArgs != "" {
+			if err := json.Unmarshal([]byte(rawArgs), &in); err != nil {
+				return nil, fmt.Errorf("invalid libreoffice_batch_convert arguments: %w", err)
+			}
+		}
+		out, err := libreofficeBatchConvertLocal(in)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{
+			"results":       out.Results,
+			"total_count":   out.TotalCount,
+			"success_count": out.SuccessCount,
+			"duration_ms":   out.DurationMs,
+		}, nil
+	case "libreoffice_read_metadata":
+		var in libreofficeReadMetadataInput
+		if rawArgs != "" {
+			if err := json.Unmarshal([]byte(rawArgs), &in); err != nil {
+				return nil, fmt.Errorf("invalid libreoffice_read_metadata arguments: %w", err)
+			}
+		}
+		out, err := libreofficeReadMetadataLocal(in)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{
+			"source_path": out.SourcePath,
+			"metadata":    out.Metadata,
+			"duration_ms": out.DurationMs,
 		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported tool: %s", name)

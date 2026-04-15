@@ -81,6 +81,24 @@ func NewHTTPHandler() http.Handler {
 		Description: "Close common code docker sandbox session and cleanup workspace.",
 	}, codeSessionClose)
 
+	// LibreOffice 工具集 - 重量级容器操作, 优先使用 Skill
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "libreoffice_convert",
+		Description: loHeavyweightPrefix + "Convert documents between formats using LibreOffice. Supports docx/xlsx/pptx/odt/ods/odp to pdf/html/txt/csv/png and more. Auto-detects source format from file extension.",
+	}, libreofficeConvert)
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "libreoffice_extract_text",
+		Description: loHeavyweightPrefix + "Extract plain text content from documents (docx, xlsx, pptx, odt, etc.) using LibreOffice.",
+	}, libreofficeExtractText)
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "libreoffice_batch_convert",
+		Description: loHeavyweightPrefix + "Batch convert all documents in a directory to a target format using LibreOffice. Supports file pattern filtering.",
+	}, libreofficeBatchConvert)
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "libreoffice_read_metadata",
+		Description: loHeavyweightPrefix + "Read document metadata (title, author, page count, word count, file info, etc.) using LibreOffice and Python-UNO.",
+	}, libreofficeReadMetadata)
+
 	// 使用 stateless 模式, 让前端用最少请求即可调用工具.
 	return mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
 		return srv

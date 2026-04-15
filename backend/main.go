@@ -50,6 +50,15 @@ func main() {
 		log.Fatalf("init docker runtime: %v", err)
 	}
 
+	mcpserver.InitLibreOfficeConfig(
+		cfg.LibreOffice.DockerImage,
+		cfg.LibreOffice.DefaultTimeoutSeconds,
+		cfg.LibreOffice.MaxTimeoutSeconds,
+		cfg.LibreOffice.MemoryLimit,
+		cfg.LibreOffice.CPULimit,
+		cfg.LibreOffice.PidsLimit,
+	)
+
 	// 初始化 SQLite 数据库
 	dbPath := filepath.Join("data", "chat.db")
 	if err := db.Init(dbPath); err != nil {

@@ -286,6 +286,10 @@ SSE 事件:
 - `code_session_init`: 初始化或复用通用代码 Docker 会话.
 - `code_run`: 在通用代码会话中执行 Shell/C/C++/Java/PHP.
 - `code_session_close`: 关闭通用代码会话并清理目录.
+- `libreoffice_convert`: 文档格式转换 (重量级, 优先使用 Skill). 通过 LibreOffice Docker 容器将 docx/xlsx/pptx/odt 等转换为 pdf/html/txt/csv/png 等格式.
+- `libreoffice_extract_text`: 提取文档纯文本内容 (重量级). 支持 docx, xlsx, pptx, odt 等格式. 对 xlsx/ods 等电子表格使用 HTML 中间格式提取.
+- `libreoffice_batch_convert`: 批量格式转换 (重量级). 一次性转换目录下所有匹配的文档文件.
+- `libreoffice_read_metadata`: 读取文档元数据 (重量级). 获取页数, 字数, 作者, 标题等属性.
 
 前端调用示例(调用工具):
 
@@ -391,6 +395,73 @@ Python 执行代码示例:
       "session_id": "code-xxx",
       "language": "cpp",
       "source_code": "#include <iostream>\\nint main(){ std::cout << 42; }"
+    }
+  }
+}
+```
+
+LibreOffice 文档转换示例:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "lo-convert",
+  "method": "tools/call",
+  "params": {
+    "name": "libreoffice_convert",
+    "arguments": {
+      "file_path": "/path/to/document.docx",
+      "output_format": "pdf"
+    }
+  }
+}
+```
+
+LibreOffice 文本提取示例:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "lo-extract",
+  "method": "tools/call",
+  "params": {
+    "name": "libreoffice_extract_text",
+    "arguments": {
+      "file_path": "/path/to/document.xlsx"
+    }
+  }
+}
+```
+
+LibreOffice 批量转换示例:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "lo-batch",
+  "method": "tools/call",
+  "params": {
+    "name": "libreoffice_batch_convert",
+    "arguments": {
+      "directory": "/path/to/docs/",
+      "output_format": "pdf",
+      "file_pattern": "*.docx"
+    }
+  }
+}
+```
+
+LibreOffice 元数据读取示例:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "lo-meta",
+  "method": "tools/call",
+  "params": {
+    "name": "libreoffice_read_metadata",
+    "arguments": {
+      "file_path": "/path/to/document.docx"
     }
   }
 }

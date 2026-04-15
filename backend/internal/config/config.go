@@ -13,7 +13,17 @@ type Config struct {
 	Server        ServerConfig        `yaml:"server"`
 	MinimaxTools  MinimaxToolsConfig  `yaml:"minimax_tools"`
 	DockerRuntime DockerRuntimeConfig `yaml:"docker_runtime"`
+	LibreOffice   LibreOfficeConfig   `yaml:"libreoffice"`
 	Backends      []BackendConfig     `yaml:"backends"`
+}
+
+type LibreOfficeConfig struct {
+	DockerImage           string  `yaml:"docker_image"`
+	DefaultTimeoutSeconds int     `yaml:"default_timeout_seconds"`
+	MaxTimeoutSeconds     int     `yaml:"max_timeout_seconds"`
+	MemoryLimit           string  `yaml:"memory_limit"`
+	CPULimit              float64 `yaml:"cpu_limit"`
+	PidsLimit             int     `yaml:"pids_limit"`
 }
 
 type MinimaxToolsConfig struct {
@@ -107,6 +117,7 @@ func (c *Config) Validate() error {
 	c.Server.FrontendURL = strings.TrimRight(c.Server.FrontendURL, "/")
 
 	c.normalizeDockerRuntimeDefaults()
+	c.normalizeLibreOfficeDefaults()
 	if c.DockerRuntime.Enabled {
 		if c.DockerRuntime.MaxLifetimeSeconds <= 0 {
 			return fmt.Errorf("docker_runtime.max_lifetime_seconds must be positive")
@@ -171,5 +182,26 @@ func (c *Config) normalizeDockerRuntimeDefaults() {
 	}
 	if strings.TrimSpace(c.DockerRuntime.WorkspaceRoot) == "" {
 		c.DockerRuntime.WorkspaceRoot = filepath.Join("data", "docker-workspaces")
+	}
+}
+
+func (c *Config) normalizeLibreOfficeDefaults() {
+	if c.LibreOffice.DockerImage == "" {
+		c.LibreOffice.DockerImage = "lscr.io/linuxserver/libreoffice:latest"
+	}
+	if c.LibreOffice.DefaultTimeoutSeconds <= 0 {
+		c.LibreOffice.DefaultTimeoutSeconds = 120
+	}
+	if c.LibreOffice.MaxTimeoutSeconds <= 0 {
+		c.LibreOffice.MaxTimeoutSeconds = 600
+	}
+	if c.LibreOffice.MemoryLimit == "" {
+		c.LibreOffice.MemoryLimit = "512m"
+	}
+	if c.LibreOffice.CPULimit <= 0 {
+		c.LibreOffice.CPULimit = 1.0
+	}
+	if c.LibreOffice.PidsLimit <= 0 {
+		c.LibreOffice.PidsLimit = 64
 	}
 }

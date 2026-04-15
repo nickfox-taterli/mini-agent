@@ -791,10 +791,88 @@ func defaultOpenAITools() []openAITool {
 		},
 	}
 
+	// LibreOffice 工具集 (重量级容器操作, 优先使用 Skill)
+	loConvertTool := openAITool{}
+	loConvertTool.Type = "function"
+	loConvertTool.Function.Name = "libreoffice_convert"
+	loConvertTool.Function.Description = "Heavyweight operation - launches a Docker container (~1GB image). Prefer existing Skills (minimax-xlsx, minimax-docx, minimax-pdf, pptx-generator) when possible. Convert documents between formats using LibreOffice. Supports docx/xlsx/pptx/odt/ods/odp to pdf/html/txt/csv/png and more."
+	loConvertTool.Function.Parameters = map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"file_path"},
+		"properties": map[string]any{
+			"file_path": map[string]any{
+				"type":        "string",
+				"description": "Absolute path to the source document (e.g. .docx, .xlsx, .pptx, .odt)",
+			},
+			"output_format": map[string]any{
+				"type":        "string",
+				"description": "Target format extension: pdf (default), html, txt, csv, png, jpg, odt, ods, odp, xlsx, docx, pptx, rtf",
+			},
+		},
+	}
+
+	loExtractTextTool := openAITool{}
+	loExtractTextTool.Type = "function"
+	loExtractTextTool.Function.Name = "libreoffice_extract_text"
+	loExtractTextTool.Function.Description = "Heavyweight operation - launches a Docker container (~1GB image). Prefer existing Skills when possible. Extract plain text content from documents (docx, xlsx, pptx, odt, etc.) using LibreOffice."
+	loExtractTextTool.Function.Parameters = map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"file_path"},
+		"properties": map[string]any{
+			"file_path": map[string]any{
+				"type":        "string",
+				"description": "Absolute path to the document to extract text from",
+			},
+		},
+	}
+
+	loBatchConvertTool := openAITool{}
+	loBatchConvertTool.Type = "function"
+	loBatchConvertTool.Function.Name = "libreoffice_batch_convert"
+	loBatchConvertTool.Function.Description = "Heavyweight operation - launches a Docker container (~1GB image). Prefer existing Skills when possible. Batch convert all documents in a directory to a target format using LibreOffice."
+	loBatchConvertTool.Function.Parameters = map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"directory"},
+		"properties": map[string]any{
+			"directory": map[string]any{
+				"type":        "string",
+				"description": "Absolute path to directory containing source files",
+			},
+			"output_format": map[string]any{
+				"type":        "string",
+				"description": "Target format, default pdf",
+			},
+			"file_pattern": map[string]any{
+				"type":        "string",
+				"description": "File glob pattern, default *.docx (e.g. *.xlsx, *.pptx)",
+			},
+		},
+	}
+
+	loReadMetadataTool := openAITool{}
+	loReadMetadataTool.Type = "function"
+	loReadMetadataTool.Function.Name = "libreoffice_read_metadata"
+	loReadMetadataTool.Function.Description = "Heavyweight operation - launches a Docker container (~1GB image). Prefer existing Skills when possible. Read document metadata (title, author, page count, word count, file info, etc.) using LibreOffice and Python-UNO."
+	loReadMetadataTool.Function.Parameters = map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"file_path"},
+		"properties": map[string]any{
+			"file_path": map[string]any{
+				"type":        "string",
+				"description": "Absolute path to the document",
+			},
+		},
+	}
+
 	return []openAITool{
 		timeTool, runSkillBashTool, webFetchTool, convertPathTool, webSearchTool, imageTool,
 		pythonSessionInitTool, pythonInstallTool, pythonRunTool, pythonCloseTool,
 		codeSessionInitTool, codeRunTool, codeCloseTool,
+		loConvertTool, loExtractTextTool, loBatchConvertTool, loReadMetadataTool,
 	}
 }
 
