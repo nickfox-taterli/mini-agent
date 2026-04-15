@@ -53,6 +53,11 @@ func ResolveFrontendUploadDirExported() (string, error) {
 	return resolveFrontendUploadDir()
 }
 
+// ResolveFrontendUploadRootDirExported 导出上传根目录 (frontend/upload).
+func ResolveFrontendUploadRootDirExported() (string, error) {
+	return resolveFrontendUploadRootDir()
+}
+
 // resolveFrontendUploadDir 返回按日期分区的上传目录的绝对路径.
 // 路径格式: <frontend>/upload/YYYY/MM/DD/
 // 如果目录不存在会自动创建.
@@ -70,6 +75,23 @@ func resolveFrontendUploadDir() (string, error) {
 		return "", fmt.Errorf("create upload dir: %w", err)
 	}
 	return uploadDir, nil
+}
+
+// resolveFrontendUploadRootDir 返回上传根目录绝对路径: <frontend>/upload.
+func resolveFrontendUploadRootDir() (string, error) {
+	frontendDir, err := resolveFrontendDir([]string{
+		filepath.Join("..", "frontend"),
+		filepath.Join("..", "..", "frontend"),
+		"frontend",
+	})
+	if err != nil {
+		return "", err
+	}
+	uploadRoot := filepath.Join(frontendDir, "upload")
+	if err := os.MkdirAll(uploadRoot, 0o755); err != nil {
+		return "", fmt.Errorf("create upload root dir: %w", err)
+	}
+	return uploadRoot, nil
 }
 
 // BuildFileURL 根据目录和文件名构建完整的 HTTP URL.

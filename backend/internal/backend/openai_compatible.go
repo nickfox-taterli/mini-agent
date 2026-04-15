@@ -283,12 +283,31 @@ func (a *OpenAICompatibleAdapter) withSkillSystemPrompt(messages []Message) []Me
 	if a.skillSystemPrompt == "" {
 		return working
 	}
-	mergedPrompt := a.skillSystemPrompt + "\nMCP tools are available through tool calling in this chat."
+	mergedPrompt := strings.TrimSpace(
+		a.skillSystemPrompt +
+			"\nMCP tools are available through tool calling in this chat.\n\n" +
+			buildContainerMountGuardPrompt(),
+	)
 	if len(working) > 0 && working[0].Role == "system" {
 		working[0].Content = strings.TrimSpace(mergedPrompt + "\n\n" + working[0].Content)
 		return working
 	}
 	return append([]Message{{Role: "system", Content: mergedPrompt}}, working...)
+}
+
+func buildContainerMountGuardPrompt() string {
+	uploadRootHint := "<frontend_upload_root>"
+	if uploadRoot, err := mcpserver.ResolveFrontendUploadRootDirExported(); err == nil {
+		uploadRootHint = uploadRoot
+	}
+	return fmt.Sprintf(
+		"Container file-access policy:\n"+
+			"1) Uploaded files are auto-mounted read-only into Docker at the same absolute path (typically under %s).\n"+
+			"2) Before searching files, first run mount sanity checks in container: `pwd && ls -la`, then `findmnt -T .` (or read `/proc/mounts`).\n"+
+			"3) For each user-provided path, verify existence first: `test -e <path>`.\n"+
+			"4) If key paths are missing, stop blind searching and report mount diagnostics (cwd, mount summary, checked paths) before proceeding.",
+		uploadRootHint,
+	)
 }
 
 func (a *OpenAICompatibleAdapter) requestAndReadRound(ctx context.Context, traceID string, round int, url string, body []byte, emit EmitFunc) (*streamRoundResult, error) {
@@ -662,7 +681,7 @@ func defaultOpenAITools() []openAITool {
 	pythonSessionInitTool := openAITool{}
 	pythonSessionInitTool.Type = "function"
 	pythonSessionInitTool.Function.Name = "python_session_init"
-	pythonSessionInitTool.Function.Description = "Initialize a Python Docker sandbox session. MUST be called before python_run_code. Returns session_id which is required for subsequent calls."
+	pythonSessionInitTool.Function.Description = "Initialize a Python Docker sandbox session. MUST be called before python_run_code. Returns session_id which is required for subsequent calls. Uploaded files under frontend/upload are auto-mounted read-only when available."
 	pythonSessionInitTool.Function.Parameters = map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
@@ -732,7 +751,7 @@ func defaultOpenAITools() []openAITool {
 	codeSessionInitTool := openAITool{}
 	codeSessionInitTool.Type = "function"
 	codeSessionInitTool.Function.Name = "code_session_init"
-	codeSessionInitTool.Function.Description = "Initialize a common code Docker sandbox session for shell/c/cpp/java/php. MUST be called before code_run. Returns session_id which is required for subsequent calls."
+	codeSessionInitTool.Function.Description = "Initialize a common code Docker sandbox session for shell/c/cpp/java/php. MUST be called before code_run. Returns session_id which is required for subsequent calls. Uploaded files under frontend/upload are auto-mounted read-only when available."
 	codeSessionInitTool.Function.Parameters = map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,

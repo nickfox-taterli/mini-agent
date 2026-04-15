@@ -255,7 +255,7 @@ func (rt *dockerRuntime) closeSession(sessionID string) (bool, error) {
 }
 
 func (rt *dockerRuntime) startSessionContainer(s *dockerSession) error {
-	args := []string{"run", "-d", "--rm", "--name", s.ContainerName,
+	baseArgs := []string{"run", "-d", "--rm", "--name", s.ContainerName,
 		"--network=none",
 		"--read-only",
 		"--tmpfs", "/tmp:rw,noexec,nosuid,size=64m",
@@ -266,13 +266,42 @@ func (rt *dockerRuntime) startSessionContainer(s *dockerSession) error {
 		"--memory", rt.cfg.MemoryLimit,
 		"--cpus", fmt.Sprintf("%.2f", rt.cfg.CPULimit),
 		"-v", s.WorkspaceDir + ":/workspace:rw",
-		s.Image,
-		"tail", "-f", "/dev/null",
 	}
+	finalTail := []string{s.Image, "tail", "-f", "/dev/null"}
+
+	args := append([]string{}, baseArgs...)
+	usedUploadMount := false
+	if uploadMount, err := buildFrontendUploadMountArg(); err == nil {
+		args = append(args, "-v", uploadMount)
+		usedUploadMount = true
+	} else {
+		log.Printf("[docker-runtime] skip upload mount: %v", err)
+	}
+	args = append(args, finalTail...)
 	if _, _, err := rt.runDockerCmd(context.Background(), 60*time.Second, args...); err != nil {
+		if usedUploadMount {
+			log.Printf("[docker-runtime] start with upload mount failed, retry without upload mount: %v", err)
+			fallbackArgs := append(append([]string{}, baseArgs...), finalTail...)
+			if _, _, retryErr := rt.runDockerCmd(context.Background(), 60*time.Second, fallbackArgs...); retryErr == nil {
+				return nil
+			}
+		}
 		return fmt.Errorf("start container: %w", err)
 	}
 	return nil
+}
+
+func buildFrontendUploadMountArg() (string, error) {
+	uploadRoot, err := resolveFrontendUploadRootDir()
+	if err != nil {
+		return "", err
+	}
+	absUploadRoot, err := filepath.Abs(uploadRoot)
+	if err != nil {
+		return "", fmt.Errorf("abs upload root: %w", err)
+	}
+	// Mount to the same absolute path so paths injected into prompts remain directly usable.
+	return absUploadRoot + ":" + absUploadRoot + ":ro", nil
 }
 
 func (rt *dockerRuntime) ensureImage(image string) error {
@@ -377,18 +406,18 @@ func (rt *dockerRuntime) installPythonPackages(s *dockerSession, packages []stri
 		return dockerExecResult{ExitCode: 0}, nil
 	}
 	start := time.Now()
-		args := []string{
-			"run", "--rm",
-			"--workdir", "/workspace",
-			"--memory", rt.cfg.MemoryLimit,
-			"--cpus", fmt.Sprintf("%.2f", rt.cfg.CPULimit),
-			"--pids-limit", strconv.Itoa(rt.cfg.PidsLimit),
-			"--cap-drop=ALL",
-			"--security-opt", "no-new-privileges",
-			"-v", s.WorkspaceDir + ":/workspace:rw",
-			s.Image,
-			"python", "-m", "pip", "install", "--no-input", "-t", "/workspace/.deps",
-		}
+	args := []string{
+		"run", "--rm",
+		"--workdir", "/workspace",
+		"--memory", rt.cfg.MemoryLimit,
+		"--cpus", fmt.Sprintf("%.2f", rt.cfg.CPULimit),
+		"--pids-limit", strconv.Itoa(rt.cfg.PidsLimit),
+		"--cap-drop=ALL",
+		"--security-opt", "no-new-privileges",
+		"-v", s.WorkspaceDir + ":/workspace:rw",
+		s.Image,
+		"python", "-m", "pip", "install", "--no-input", "-t", "/workspace/.deps",
+	}
 	args = append(args, cleanPkgs...)
 	stdout, stderr, err := rt.runDockerCmd(context.Background(), time.Duration(timeout)*time.Second, args...)
 	res := dockerExecResult{Stdout: stdout, Stderr: stderr, DurationMs: time.Since(start).Milliseconds()}
