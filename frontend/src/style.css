@@ -694,6 +694,12 @@ html {
   border-radius: 6px;
 }
 
+.user-message {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
 /* ===== Assistant Message (Document Style) ===== */
 
 .assistant-message {
@@ -712,8 +718,13 @@ html {
 }
 
 .assistant-message:hover .message-actions,
+.user-message:hover .user-message-actions,
 .message-actions:focus-within {
   opacity: 1;
+}
+
+.user-message-actions {
+  justify-content: flex-end;
 }
 
 .action-btn {
