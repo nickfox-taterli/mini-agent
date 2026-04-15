@@ -66,7 +66,7 @@ func main() {
 	}
 	log.Printf("database initialized: %s", dbPath)
 
-	srv := server.New(manager, cfg.Server.Host, cfg.Server.Port, cfg.Server.FrontendURL)
+	srv := server.New(manager, cfg.Server.Host, cfg.Server.Port, cfg.Server.FrontendURL, cfg.Auth.Enabled(), cfg.Auth.Password)
 	log.Printf("backend listening on http://%s:%d, log_file=%s", cfg.Server.Host, cfg.Server.Port, logPath)
 	if err := srv.Run(); err != nil {
 		log.Fatalf("run server: %v", err)

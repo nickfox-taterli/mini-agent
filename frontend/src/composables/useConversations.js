@@ -2,7 +2,7 @@ import { ref, computed } from 'vue'
 
 const STORAGE_KEY_SIDEBAR = 'agent-chat-sidebar-open'
 
-export function useConversations(renderMarkdown, apiBase) {
+export function useConversations(renderMarkdown, apiBase, authHeaders) {
   const conversations = ref([])
   const currentConversationId = ref(null)
   const sidebarOpen = ref(true)
@@ -87,7 +87,7 @@ export function useConversations(renderMarkdown, apiBase) {
 
   async function loadConversations() {
     try {
-      const res = await fetch(`${apiBase}/api/conversations`)
+      const res = await fetch(`${apiBase}/api/conversations`, { headers: authHeaders() })
       if (!res.ok) return
       const data = await res.json()
       conversations.value = data.conversations || []
@@ -133,7 +133,7 @@ export function useConversations(renderMarkdown, apiBase) {
 
     // 从后端加载目标会话的消息
     try {
-      const res = await fetch(`${apiBase}/api/conversations/${id}`)
+      const res = await fetch(`${apiBase}/api/conversations/${id}`, { headers: authHeaders() })
       if (res.ok) {
         const data = await res.json()
         const conv = data.conversation
@@ -168,7 +168,7 @@ export function useConversations(renderMarkdown, apiBase) {
       if (isLocalOnly) {
         const res = await fetch(`${apiBase}/api/conversations`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ id: conv.id, title, createdAt: conv.createdAt })
         })
         if (!res.ok) {
@@ -180,7 +180,7 @@ export function useConversations(renderMarkdown, apiBase) {
 
       const res = await fetch(`${apiBase}/api/conversations/${currentConversationId.value}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ title, messages: storedMsgs })
       })
       if (!res.ok) {
@@ -204,7 +204,7 @@ export function useConversations(renderMarkdown, apiBase) {
 
     // 从后端加载消息
     try {
-      const res = await fetch(`${apiBase}/api/conversations/${latest.id}`)
+      const res = await fetch(`${apiBase}/api/conversations/${latest.id}`, { headers: authHeaders() })
       if (res.ok) {
         const data = await res.json()
         const conv = data.conversation
@@ -228,7 +228,7 @@ export function useConversations(renderMarkdown, apiBase) {
         const sorted = [...remaining].sort((a, b) => b.createdAt - a.createdAt)
         currentConversationId.value = sorted[0].id
         try {
-          const res = await fetch(`${apiBase}/api/conversations/${sorted[0].id}`)
+          const res = await fetch(`${apiBase}/api/conversations/${sorted[0].id}`, { headers: authHeaders() })
           if (res.ok) {
             const data = await res.json()
             if (data.conversation) {
@@ -255,7 +255,7 @@ export function useConversations(renderMarkdown, apiBase) {
     // 非本地会话需要调用后端删除
     if (!localOnlyIds.has(id)) {
       try {
-        await fetch(`${apiBase}/api/conversations/${id}`, { method: 'DELETE' })
+        await fetch(`${apiBase}/api/conversations/${id}`, { method: 'DELETE', headers: authHeaders() })
       } catch {}
     }
   }

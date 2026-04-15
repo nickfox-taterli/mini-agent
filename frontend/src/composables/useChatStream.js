@@ -25,7 +25,7 @@ function estimateTokenCountFromText(text, coefficient) {
   return Math.max(0, Math.round(baseTokenEstimate * coefficient))
 }
 
-export function useChatStream(apiBase, renderMarkdown) {
+export function useChatStream(apiBase, renderMarkdown, authHeaders) {
   // 状态
   const loading = ref(false)
   const conversationStreaming = ref(false)
@@ -174,7 +174,7 @@ export function useChatStream(apiBase, renderMarkdown) {
   // 加载后端列表
   async function loadBackends() {
     try {
-      const res = await fetch(`${apiBase}/api/backends`)
+      const res = await fetch(`${apiBase}/api/backends`, { headers: authHeaders() })
       if (!res.ok) return
       const data = await res.json()
       backends.value = data.backends || []
@@ -259,7 +259,7 @@ export function useChatStream(apiBase, renderMarkdown) {
 
     try {
       const res = await fetch(`${apiBase}/api/chat/stream`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           backend_id: selectedBackendId.value || undefined,
           conversation_id: conversationId || undefined,
@@ -482,7 +482,7 @@ export function useChatStream(apiBase, renderMarkdown) {
       return
     }
     try {
-      const res = await fetch(`${apiBase}/api/conversations/${encodeURIComponent(id)}/state`)
+      const res = await fetch(`${apiBase}/api/conversations/${encodeURIComponent(id)}/state`, { headers: authHeaders() })
       if (!res.ok) return
       const data = await res.json()
       conversationStreaming.value = !!data.is_streaming

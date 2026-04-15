@@ -33,7 +33,7 @@ func TestMCPGetSystemTime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
 	}
-	srv := server.New(manager, "127.0.0.1", 18888, "http://127.0.0.1:18889")
+	srv := server.New(manager, "127.0.0.1", 18888, "http://127.0.0.1:18889", false, "")
 
 	body := map[string]any{
 		"jsonrpc": "2.0",
@@ -97,7 +97,7 @@ func TestMCPRunSkillBash(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
 	}
-	srv := server.New(manager, "127.0.0.1", 18888, "http://127.0.0.1:18889")
+	srv := server.New(manager, "127.0.0.1", 18888, "http://127.0.0.1:18889", false, "")
 
 	fileName := "tests/skill-bash.txt"
 	body := map[string]any{
@@ -162,7 +162,7 @@ func TestMCPWebFetch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
 	}
-	srv := server.New(manager, "127.0.0.1", 18888, "http://127.0.0.1:18889")
+	srv := server.New(manager, "127.0.0.1", 18888, "http://127.0.0.1:18889", false, "")
 
 	// 启动一个临时 HTTP 服务器作为抓取目标
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -234,7 +234,7 @@ func TestMCPWebFetchInvalidURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
 	}
-	srv := server.New(manager, "127.0.0.1", 18888, "http://127.0.0.1:18889")
+	srv := server.New(manager, "127.0.0.1", 18888, "http://127.0.0.1:18889", false, "")
 
 	body := map[string]any{
 		"jsonrpc": "2.0",
@@ -294,7 +294,7 @@ func TestMCPConvertLocalPathToURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
 	}
-	srv := server.New(manager, "127.0.0.1", 18888, "http://127.0.0.1:18889")
+	srv := server.New(manager, "127.0.0.1", 18888, "http://127.0.0.1:18889", false, "")
 
 	localPath, err := filepath.Abs(filepath.Join("..", "..", "frontend", "upload", "2026", "04", "14", "report.xlsx"))
 	if err != nil {
@@ -385,7 +385,7 @@ func TestMCPPythonAndCodeDockerFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
 	}
-	srv := server.New(manager, "127.0.0.1", 18888, "http://127.0.0.1:18889")
+	srv := server.New(manager, "127.0.0.1", 18888, "http://127.0.0.1:18889", false, "")
 
 	pythonSessionID := callMCPAndGetString(t, srv, "python_session_init", map[string]any{
 		"python_version": "3.11",

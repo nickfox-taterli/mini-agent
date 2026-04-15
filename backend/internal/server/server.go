@@ -30,6 +30,9 @@ type Server struct {
 	port        int
 	frontendURL string
 	streamState *conversationStreamRegistry
+	authEnabled bool
+	tokenStore  *tokenStore
+	password    string
 }
 
 type streamChatReq struct {
@@ -86,7 +89,7 @@ func (r *conversationStreamRegistry) isStreaming(conversationID string) bool {
 
 var attachmentLinkPattern = regexp.MustCompile(`\[[^\]]*附件[^\]]*\]\((https?://[^)\s]+)\)`)
 
-func New(m *backend.Manager, host string, port int, frontendURL string) *Server {
+func New(m *backend.Manager, host string, port int, frontendURL string, authEnabled bool, password string) *Server {
 	r := gin.Default()
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"*"},
@@ -99,6 +102,11 @@ func New(m *backend.Manager, host string, port int, frontendURL string) *Server 
 
 	mcpserver.InitConfig(frontendURL)
 
+	var ts *tokenStore
+	if authEnabled {
+		ts = newTokenStore()
+	}
+
 	s := &Server{
 		r:           r,
 		m:           m,
@@ -106,12 +114,16 @@ func New(m *backend.Manager, host string, port int, frontendURL string) *Server 
 		port:        port,
 		frontendURL: frontendURL,
 		streamState: newConversationStreamRegistry(),
+		authEnabled: authEnabled,
+		tokenStore:  ts,
+		password:    password,
 	}
 	s.mountRoutes()
 	return s
 }
 
 func (s *Server) mountRoutes() {
+	// --- 公开路由 (不需要认证) ---
 	s.r.GET("/api/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"status": "ok",
@@ -120,30 +132,37 @@ func (s *Server) mountRoutes() {
 		})
 	})
 
-	s.r.GET("/api/backends", func(c *gin.Context) {
+	if s.authEnabled {
+		s.r.POST("/api/auth/login", handleLogin(s.tokenStore, s.password))
+	}
+
+	// --- 受保护路由 (认证启用时需要 Bearer token) ---
+	api := s.r.Group("/api")
+	if s.authEnabled {
+		api.Use(authMiddleware(s.tokenStore))
+	}
+
+	api.GET("/backends", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"backends": s.m.ListBackends()})
 	})
 
-	s.r.POST("/api/chat/stream", s.handleStreamChat)
+	api.POST("/chat/stream", s.handleStreamChat)
+	api.POST("/upload", s.handleUpload)
 
-	// 文件上传接口
-	s.r.POST("/api/upload", s.handleUpload)
-
-	// 静态文件服务: /upload/*filepath -> frontend/upload/
-	s.r.GET("/upload/*filepath", s.handleServeUpload)
-	s.r.HEAD("/upload/*filepath", s.handleServeUpload)
-
-	// 会话管理 API
-	s.r.GET("/api/conversations", s.handleListConversations)
-	s.r.POST("/api/conversations", s.handleCreateConversation)
-	s.r.GET("/api/conversations/:id", s.handleGetConversation)
-	s.r.GET("/api/conversations/:id/state", s.handleGetConversationState)
-	s.r.PUT("/api/conversations/:id", s.handleUpdateConversation)
-	s.r.DELETE("/api/conversations/:id", s.handleDeleteConversation)
+	api.GET("/conversations", s.handleListConversations)
+	api.POST("/conversations", s.handleCreateConversation)
+	api.GET("/conversations/:id", s.handleGetConversation)
+	api.GET("/conversations/:id/state", s.handleGetConversationState)
+	api.PUT("/conversations/:id", s.handleUpdateConversation)
+	api.DELETE("/conversations/:id", s.handleDeleteConversation)
 
 	mcpHandler := gin.WrapH(mcpserver.NewHTTPHandler())
-	s.r.Any("/api/mcp", mcpHandler)
-	s.r.Any("/api/mcp/*path", mcpHandler)
+	api.Any("/mcp", mcpHandler)
+	api.Any("/mcp/*path", mcpHandler)
+
+	// --- 静态文件服务 (公开, 浏览器直接访问无法带 Bearer token) ---
+	s.r.GET("/upload/*filepath", s.handleServeUpload)
+	s.r.HEAD("/upload/*filepath", s.handleServeUpload)
 }
 
 func (s *Server) Run() error {

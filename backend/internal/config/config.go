@@ -9,8 +9,17 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type AuthConfig struct {
+	Password string `yaml:"password"`
+}
+
+func (a AuthConfig) Enabled() bool {
+	return strings.TrimSpace(a.Password) != ""
+}
+
 type Config struct {
 	Server        ServerConfig        `yaml:"server"`
+	Auth          AuthConfig          `yaml:"auth"`
 	MinimaxTools  MinimaxToolsConfig  `yaml:"minimax_tools"`
 	DockerRuntime DockerRuntimeConfig `yaml:"docker_runtime"`
 	LibreOffice   LibreOfficeConfig   `yaml:"libreoffice"`

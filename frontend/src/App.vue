@@ -6,6 +6,7 @@ import Composer from './components/Composer.vue'
 import EmptyState from './components/EmptyState.vue'
 import DetailPanel from './components/DetailPanel.vue'
 import { useMarkdown } from './composables/useMarkdown'
+import { useAuth } from './composables/useAuth'
 import { useConversations } from './composables/useConversations'
 import { useChatStream } from './composables/useChatStream'
 
@@ -13,18 +14,48 @@ const apiBase = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:18888'
 
 // composables
 const { renderMarkdown, copyCode } = useMarkdown()
+const { isAuthenticated, needsAuth, authError, checking, authHeaders, login, logout, checkAuth } = useAuth(apiBase)
+
 const {
   conversations, currentConversationId, sidebarOpen, sortedConversations,
   loadConversations, loadSidebarState, createNewConversation,
   switchConversation, saveCurrentMessages, deleteConversation,
   loadLatestConversation, toggleSidebar
-} = useConversations(renderMarkdown, apiBase)
+} = useConversations(renderMarkdown, apiBase, authHeaders)
 
 const {
   loading, toolCalling, toolCallingName, workingHard, currentThinkingPhrase,
   backends, selectedBackendId, now, conversationStreaming, tokenStats, sendMessage, regenerate, loadBackends, cleanup,
   getRandomThinkingDonePhrase, getThinkingDuration, syncConversationState
-} = useChatStream(apiBase, renderMarkdown)
+} = useChatStream(apiBase, renderMarkdown, authHeaders)
+
+// 登录状态
+const loginPassword = ref('')
+const loginLoading = ref(false)
+
+async function handleLogin() {
+  if (!loginPassword.value.trim()) return
+  loginLoading.value = true
+  const ok = await login(loginPassword.value)
+  loginLoading.value = false
+  if (ok) {
+    loginPassword.value = ''
+    await initAppData()
+  }
+}
+
+async function initAppData() {
+  await loadConversations()
+  if (conversations.value.length === 0) {
+    createNewConversation(messages, expandedThinking)
+  } else {
+    loadLatestConversation(messages, expandedThinking)
+  }
+  loadBackends()
+  if (currentConversationId.value) {
+    await syncConversationState(currentConversationId.value)
+  }
+}
 
 // 本地状态
 const input = ref('')
@@ -151,7 +182,7 @@ async function uploadFile(file) {
   try {
     const formData = new FormData()
     formData.append('file', file)
-    const res = await fetch(`${apiBase}/api/upload`, { method: 'POST', body: formData })
+    const res = await fetch(`${apiBase}/api/upload`, { method: 'POST', headers: authHeaders(), body: formData })
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
       alert(data.error || `上传失败: HTTP ${res.status}`)
@@ -185,7 +216,7 @@ async function generateTitleAsync(convId, maxRetries = 3, retryDelay = 1000) {
       ]
 
       const res = await fetch(`${apiBase}/api/chat/stream`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ backend_id: selectedBackendId.value || undefined, messages: titleMessages })
       })
       if (!res.ok || !res.body) break
@@ -261,21 +292,14 @@ function parseSSEBlock(block) {
 // 初始化
 onMounted(async () => {
   loadSidebarState()
-  await loadConversations()
+  await checkAuth()
+  if (needsAuth.value && !isAuthenticated.value) return
+
   document.addEventListener('keydown', handleKeydown)
   document.addEventListener('visibilitychange', handleVisibilityChange)
 
-  if (conversations.value.length === 0) {
-    createNewConversation(messages, expandedThinking)
-  } else {
-    loadLatestConversation(messages, expandedThinking)
-  }
+  await initAppData()
 
-  loadBackends()
-
-  if (currentConversationId.value) {
-    await syncConversationState(currentConversationId.value)
-  }
   conversationStateTimer = setInterval(() => {
     if (!shouldPollConversationState()) return
     syncConversationState(currentConversationId.value)
@@ -298,7 +322,35 @@ watch(currentConversationId, (id) => {
 </script>
 
 <template>
-  <div class="app-layout">
+  <!-- 认证检查中 -->
+  <div v-if="checking" class="auth-checking">
+    <div class="auth-checking-spinner"></div>
+    <p>Connecting...</p>
+  </div>
+
+  <!-- 登录界面 -->
+  <div v-else-if="needsAuth && !isAuthenticated" class="login-screen">
+    <div class="login-card">
+      <h2>Login</h2>
+      <form @submit.prevent="handleLogin">
+        <input
+          v-model="loginPassword"
+          type="password"
+          placeholder="Enter password"
+          class="login-input"
+          :disabled="loginLoading"
+          autofocus
+        />
+        <p v-if="authError" class="login-error">{{ authError }}</p>
+        <button type="submit" class="login-btn" :disabled="loginLoading || !loginPassword.trim()">
+          {{ loginLoading ? 'Logging in...' : 'Login' }}
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- 正常应用 -->
+  <div v-else class="app-layout">
     <Sidebar
       :conversations="conversations"
       :current-conversation-id="currentConversationId"

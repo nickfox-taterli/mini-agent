@@ -460,9 +460,9 @@ boundaries). Using both wastes space and creates visual stutter.
 
   CJK paragraph separation (good -- indent, no spacing):
 
-  　　第一段正文内容从这里开始,使用两个字符
+    第一段正文内容从这里开始,使用两个字符
   的首行缩进来标记段落边界.
-  　　第二段紧跟其后,没有段间距,但首行缩进
+    第二段紧跟其后,没有段间距,但首行缩进
   清晰地标识了新段落的开始.
 ```
 

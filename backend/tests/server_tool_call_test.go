@@ -60,7 +60,7 @@ func TestStreamChat_AutoCallMCPTool(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
 	}
-	srv := server.New(manager, "127.0.0.1", 18888, "http://127.0.0.1:18889")
+	srv := server.New(manager, "127.0.0.1", 18888, "http://127.0.0.1:18889", false, "")
 
 	body := map[string]any{
 		"messages": []map[string]string{{"role": "user", "content": "现在几点"}},
@@ -151,7 +151,7 @@ func TestStreamChat_AutoCallWebFetchTool(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
 	}
-	srv := server.New(manager, "127.0.0.1", 18888, "http://127.0.0.1:18889")
+	srv := server.New(manager, "127.0.0.1", 18888, "http://127.0.0.1:18889", false, "")
 
 	body := map[string]any{
 		"messages": []map[string]string{{"role": "user", "content": "抓取 example.com"}},

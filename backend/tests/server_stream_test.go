@@ -49,7 +49,7 @@ func TestStreamChat_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
 	}
-	srv := server.New(manager, "127.0.0.1", 18888, "http://127.0.0.1:18889")
+	srv := server.New(manager, "127.0.0.1", 18888, "http://127.0.0.1:18889", false, "")
 
 	body := map[string]any{
 		"messages": []map[string]string{{"role": "user", "content": "你好"}},
@@ -112,7 +112,7 @@ func TestStreamChat_ConversationLockConflict(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
 	}
-	srv := server.New(manager, "127.0.0.1", 18888, "http://127.0.0.1:18889")
+	srv := server.New(manager, "127.0.0.1", 18888, "http://127.0.0.1:18889", false, "")
 
 	body := map[string]any{
 		"conversation_id": "conv-lock",
@@ -183,7 +183,7 @@ func TestConversationState_StreamingFlag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
 	}
-	srv := server.New(manager, "127.0.0.1", 18888, "http://127.0.0.1:18889")
+	srv := server.New(manager, "127.0.0.1", 18888, "http://127.0.0.1:18889", false, "")
 
 	body := map[string]any{
 		"conversation_id": "conv-state",
@@ -258,7 +258,7 @@ func TestConversationState_ReleaseOnClientCancel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
 	}
-	srv := server.New(manager, "127.0.0.1", 18888, "http://127.0.0.1:18889")
+	srv := server.New(manager, "127.0.0.1", 18888, "http://127.0.0.1:18889", false, "")
 
 	body := map[string]any{
 		"conversation_id": "conv-cancel",
@@ -332,7 +332,7 @@ func TestStreamChat_UpstreamError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
 	}
-	srv := server.New(manager, "127.0.0.1", 18888, "http://127.0.0.1:18889")
+	srv := server.New(manager, "127.0.0.1", 18888, "http://127.0.0.1:18889", false, "")
 
 	body := map[string]any{
 		"messages": []map[string]string{{"role": "user", "content": "你好"}},
@@ -387,7 +387,7 @@ func TestStreamChat_AttachmentURLConvertedToLocalPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
 	}
-	srv := server.New(manager, "127.0.0.1", 18888, "http://127.0.0.1:18889")
+	srv := server.New(manager, "127.0.0.1", 18888, "http://127.0.0.1:18889", false, "")
 
 	uploadDir, err := mcpserver.ResolveFrontendUploadDirExported()
 	if err != nil {
