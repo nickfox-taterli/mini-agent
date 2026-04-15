@@ -1,7 +1,8 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch, nextTick, onMounted } from 'vue'
 
 const fileInputRef = ref(null)
+const textareaRef = ref(null)
 
 const props = defineProps({
   input: {
@@ -60,6 +61,38 @@ function triggerFileInput() {
 const canSend = computed(() => {
   return (props.input.trim() !== '' || props.attachedFiles.length > 0) && !props.loading && !props.conversationStreaming
 })
+
+function autoResizeTextarea() {
+  const el = textareaRef.value
+  if (!el) return
+
+  el.style.height = 'auto'
+  const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 24
+  const maxHeight = lineHeight * 10
+  const nextHeight = Math.min(el.scrollHeight, maxHeight)
+
+  el.style.height = `${nextHeight}px`
+  el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden'
+}
+
+function handleTextareaInput(event) {
+  const value = event.target.value
+  emit('update:input', value)
+  emit('input', event)
+  autoResizeTextarea()
+}
+
+watch(
+  () => props.input,
+  async () => {
+    await nextTick()
+    autoResizeTextarea()
+  }
+)
+
+onMounted(() => {
+  autoResizeTextarea()
+})
 </script>
 
 <template>
@@ -82,12 +115,13 @@ const canSend = computed(() => {
       </svg>
     </button>
     <textarea
+      ref="textareaRef"
       :value="input"
       class="input"
       :placeholder="conversationStreaming ? '另一页面正在生成中...' : '尽管问...'"
       rows="1"
       :disabled="loading || conversationStreaming"
-      @input="emit('update:input', $event.target.value); $emit('input', $event)"
+      @input="handleTextareaInput"
       @keydown.enter.exact.prevent="emit('send')"
     />
     <div class="send-wrapper">
