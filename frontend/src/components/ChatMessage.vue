@@ -35,8 +35,12 @@ const latestToolCall = computed(() => {
   if (!list.length) return null
   const running = list.find(tc => tc.status === 'running')
   if (running) return { call: running, index: list.indexOf(running) }
-  const last = list[list.length - 1]
-  return { call: last, index: list.length - 1 }
+  // 工具完成后不再展示绿色标签, 仅运行中展示
+  return null
+})
+
+const showTagsRow = computed(() => {
+  return showThinkingTag.value || !!latestToolCall.value || (props.toolCalling && props.isLast)
 })
 </script>
 
@@ -58,7 +62,7 @@ const latestToolCall = computed(() => {
           <span>正在非常努力干活...</span>
         </div>
         <!-- 紧凑标签行: 思考 + 工具调用 -->
-        <div v-if="msg.reasoning || msg.toolCalls?.length || (toolCalling && isLast)" class="tags-row">
+        <div v-if="showTagsRow" class="tags-row">
           <!-- 思考标签: 与工具调用互斥,工具调用时隐藏 -->
           <button
             v-if="showThinkingTag"
