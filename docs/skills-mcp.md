@@ -228,7 +228,7 @@ Q: 为什么不直接让模型按提示词拼接 URL?
 
 - 单端点复用: 仍通过 `/api/mcp` 暴露.
 - 会话复用: `session_id -> container` 映射,并按 `session_ttl_seconds` 回收.
-- 安全参数: `--network=none`,`--read-only`,`--pids-limit`,`--memory`,`--cpus`,`--cap-drop=ALL`,`--security-opt no-new-privileges`.
+- 安全参数: `--read-only`,`--pids-limit`,`--memory`,`--cpus`, `--security-opt no-new-privileges`.
 - 共享目录: 每会话挂载独立 `workspace` 目录,用于输入输出文件与产物持久化.
 - Python 包安装: 仅支持显式调用 `python_install_packages`,默认不自动安装.
 

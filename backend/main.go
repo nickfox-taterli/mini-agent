@@ -39,6 +39,7 @@ func main() {
 		cfg.DockerRuntime.Enabled,
 		cfg.DockerRuntime.Host,
 		cfg.DockerRuntime.SessionTTLSeconds,
+		cfg.DockerRuntime.MaxLifetimeSeconds,
 		cfg.DockerRuntime.DefaultTimeoutSeconds,
 		cfg.DockerRuntime.MaxTimeoutSeconds,
 		cfg.DockerRuntime.MemoryLimit,

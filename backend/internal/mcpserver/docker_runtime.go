@@ -21,6 +21,7 @@ type DockerRuntimeConfig struct {
 	Enabled               bool
 	Host                  string
 	SessionTTLSeconds     int
+	MaxLifetimeSeconds    int
 	DefaultTimeoutSeconds int
 	MaxTimeoutSeconds     int
 	MemoryLimit           string
@@ -83,7 +84,7 @@ func InitDockerRuntime(cfg DockerRuntimeConfig) error {
 	}
 	dockerRT = rt
 	go rt.cleanupLoop()
-	log.Printf("[docker-runtime] enabled workspace_root=%s ttl=%ds", cfg.WorkspaceRoot, cfg.SessionTTLSeconds)
+	log.Printf("[docker-runtime] enabled workspace_root=%s ttl=%ds max_lifetime=%ds", cfg.WorkspaceRoot, cfg.SessionTTLSeconds, cfg.MaxLifetimeSeconds)
 	return nil
 }
 
@@ -96,6 +97,7 @@ func DockerRuntimeConfigFromExternal(
 	enabled bool,
 	host string,
 	sessionTTLSeconds int,
+	maxLifetimeSeconds int,
 	defaultTimeoutSeconds int,
 	maxTimeoutSeconds int,
 	memoryLimit string,
@@ -107,6 +109,7 @@ func DockerRuntimeConfigFromExternal(
 		Enabled:               enabled,
 		Host:                  host,
 		SessionTTLSeconds:     sessionTTLSeconds,
+		MaxLifetimeSeconds:    maxLifetimeSeconds,
 		DefaultTimeoutSeconds: defaultTimeoutSeconds,
 		MaxTimeoutSeconds:     maxTimeoutSeconds,
 		MemoryLimit:           memoryLimit,
@@ -162,6 +165,23 @@ func (rt *dockerRuntime) cleanupExpiredSessions() {
 	rt.mu.RUnlock()
 
 	for _, id := range expired {
+		if _, err := rt.closeSession(id); err != nil {
+			log.Printf("[docker-runtime] cleanup session=%s err=%v", id, err)
+		}
+	}
+
+	// 绝对生命周期清理: 容器创建超过 max_lifetime_seconds 则强制销毁.
+	maxLife := time.Duration(rt.cfg.MaxLifetimeSeconds) * time.Second
+	var aged []string
+	rt.mu.RLock()
+	for id, s := range rt.sessions {
+		if now.Sub(s.CreatedAt) > maxLife {
+			aged = append(aged, id)
+		}
+	}
+	rt.mu.RUnlock()
+	for _, id := range aged {
+		log.Printf("[docker-runtime] session=%s exceeded max_lifetime (%ds), destroying", id, rt.cfg.MaxLifetimeSeconds)
 		if _, err := rt.closeSession(id); err != nil {
 			log.Printf("[docker-runtime] cleanup session=%s err=%v", id, err)
 		}
@@ -256,11 +276,9 @@ func (rt *dockerRuntime) closeSession(sessionID string) (bool, error) {
 
 func (rt *dockerRuntime) startSessionContainer(s *dockerSession) error {
 	baseArgs := []string{"run", "-d", "--rm", "--name", s.ContainerName,
-		"--network=none",
 		"--read-only",
 		"--tmpfs", "/tmp:rw,noexec,nosuid,size=64m",
 		"--workdir", "/workspace",
-		"--cap-drop=ALL",
 		"--security-opt", "no-new-privileges",
 		"--pids-limit", strconv.Itoa(rt.cfg.PidsLimit),
 		"--memory", rt.cfg.MemoryLimit,

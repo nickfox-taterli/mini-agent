@@ -79,4 +79,7 @@ func TestValidateDockerRuntimeDefaults(t *testing.T) {
 	if cfg.DockerRuntime.SessionTTLSeconds != 1800 {
 		t.Fatalf("expected session ttl 1800, got %d", cfg.DockerRuntime.SessionTTLSeconds)
 	}
+	if cfg.DockerRuntime.MaxLifetimeSeconds != 3600 {
+		t.Fatalf("expected max lifetime 3600, got %d", cfg.DockerRuntime.MaxLifetimeSeconds)
+	}
 }

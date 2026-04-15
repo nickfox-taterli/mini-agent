@@ -356,6 +356,7 @@ func TestMCPPythonAndCodeDockerFlow(t *testing.T) {
 	if err := mcpserver.InitDockerRuntime(mcpserver.DockerRuntimeConfig{
 		Enabled:               true,
 		SessionTTLSeconds:     1800,
+		MaxLifetimeSeconds:    3600,
 		DefaultTimeoutSeconds: 120,
 		MaxTimeoutSeconds:     600,
 		MemoryLimit:           "512m",

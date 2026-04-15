@@ -25,6 +25,7 @@ type DockerRuntimeConfig struct {
 	Enabled               bool    `yaml:"enabled"`
 	Host                  string  `yaml:"host"`
 	SessionTTLSeconds     int     `yaml:"session_ttl_seconds"`
+	MaxLifetimeSeconds    int     `yaml:"max_lifetime_seconds"`
 	DefaultTimeoutSeconds int     `yaml:"default_timeout_seconds"`
 	MaxTimeoutSeconds     int     `yaml:"max_timeout_seconds"`
 	MemoryLimit           string  `yaml:"memory_limit"`
@@ -107,6 +108,9 @@ func (c *Config) Validate() error {
 
 	c.normalizeDockerRuntimeDefaults()
 	if c.DockerRuntime.Enabled {
+		if c.DockerRuntime.MaxLifetimeSeconds <= 0 {
+			return fmt.Errorf("docker_runtime.max_lifetime_seconds must be positive")
+		}
 		if c.DockerRuntime.WorkspaceRoot == "" {
 			return fmt.Errorf("docker_runtime.workspace_root is required when docker_runtime.enabled=true")
 		}
@@ -146,6 +150,9 @@ func (c *Config) normalizeDockerRuntimeDefaults() {
 	}
 	if c.DockerRuntime.SessionTTLSeconds <= 0 {
 		c.DockerRuntime.SessionTTLSeconds = 1800
+	}
+	if c.DockerRuntime.MaxLifetimeSeconds <= 0 {
+		c.DockerRuntime.MaxLifetimeSeconds = 3600
 	}
 	if c.DockerRuntime.DefaultTimeoutSeconds <= 0 {
 		c.DockerRuntime.DefaultTimeoutSeconds = 120
