@@ -1,32 +1,37 @@
 # frontend
-frontend/node_modules
-frontend/dist
-frontend/tmp
-frontend/upload
+frontend/node_modules/
+frontend/dist/
+frontend/tmp/
+frontend/upload/
 
-# backend
+# backend binaries and runtime artifacts
 backend/*.exe
 backend/backend
 backend/logs/
+backend/data/*.db
+backend/data/*.db-*
+backend/agent-chat
 
-# skills generated files & dependencies
+# skills generated files and dependencies
 backend/skills/**/node_modules/
 backend/skills/**/work_dir/
 backend/skills/**/*.xlsx
 
-# common
-.DS_Store
-
-# secrets & local config
+# local config and metadata
 backend/config.yaml
-
-# agent-specific docs
-AGENTS.md
-CLAUDE.md
-backend/logs/backend.log
+.DS_Store
 .playwright-mcp/
-backend/agent-chat
+.claude/
+.vite/
 test-*.png
+
+# generated office and log files
 *.log
 *.xlsx
+
+# local docker workspace cache
 backend/data/docker-workspaces/
+
+# local assistant docs
+AGENTS.md
+CLAUDE.md
