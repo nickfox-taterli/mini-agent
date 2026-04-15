@@ -25,6 +25,8 @@ const (
 	maxRetryDelay          = 8 * time.Second
 	defaultToolMaxRounds   = 16
 	upstreamConcurrencyCap = 2
+	askUserOpenTag         = "<ask_user>"
+	askUserCloseTag        = "</ask_user>"
 )
 
 var upstreamSlots = make(chan struct{}, upstreamConcurrencyCap)
@@ -160,6 +162,28 @@ type streamRoundResult struct {
 	ToolCalls        []ToolCall
 }
 
+type askUserPayload struct {
+	Question    string         `json:"question,omitempty"`
+	Title       string         `json:"title,omitempty"`
+	Description string         `json:"description,omitempty"`
+	FieldKey    string         `json:"field_key,omitempty"`
+	Placeholder string         `json:"placeholder,omitempty"`
+	InputType   string         `json:"input_type,omitempty"`
+	Options     []string       `json:"options,omitempty"`
+	Required    bool           `json:"required"`
+	Fields      []askUserField `json:"fields,omitempty"`
+	SubmitLabel string         `json:"submit_label,omitempty"`
+}
+
+type askUserField struct {
+	Key         string   `json:"key"`
+	Label       string   `json:"label"`
+	InputType   string   `json:"input_type,omitempty"`
+	Placeholder string   `json:"placeholder,omitempty"`
+	Options     []string `json:"options,omitempty"`
+	Required    bool     `json:"required"`
+}
+
 type upstreamErrorInfo struct {
 	StatusCode int
 	Retryable  bool
@@ -286,6 +310,7 @@ func (a *OpenAICompatibleAdapter) withSkillSystemPrompt(messages []Message) []Me
 	mergedPrompt := strings.TrimSpace(
 		a.skillSystemPrompt +
 			"\nMCP tools are available through tool calling in this chat.\n\n" +
+			buildAskUserPrompt() + "\n\n" +
 			buildContainerMountGuardPrompt(),
 	)
 	if len(working) > 0 && working[0].Role == "system" {
@@ -293,6 +318,19 @@ func (a *OpenAICompatibleAdapter) withSkillSystemPrompt(messages []Message) []Me
 		return working
 	}
 	return append([]Message{{Role: "system", Content: mergedPrompt}}, working...)
+}
+
+func buildAskUserPrompt() string {
+	return "If user intent is clear but key information is missing, ask follow-up questions with a structured card format. " +
+		"Strong preference: collect multiple missing fields (2-4) in a single ask_user card via fields array, instead of one-by-one. " +
+		"Use one-by-one only if dependency is strict (next question depends on previous answer). " +
+		"Use input_type select or multiselect whenever choices are predictable; use text only when options are open-ended. " +
+		"For select/multiselect fields, put recommended option first so UI can preselect it, and include an 'Other' choice semantics for manual input fallback. " +
+		"Hard rule: when any required parameter is missing, do NOT provide provisional answers, do NOT provide broad summaries, and do NOT call tools/search yet. Ask first, then answer after user provides required info. " +
+		"For location-dependent requests (weather, nearby places, local recommendations), location is required: ask for city/region first via ask_user before any analysis. " +
+		"Output ONLY: <ask_user>{\"title\":\"...\",\"description\":\"...\",\"fields\":[{\"key\":\"...\",\"label\":\"...\",\"input_type\":\"text|select|multiselect\",\"options\":[...],\"placeholder\":\"...\",\"required\":true}],\"submit_label\":\"...\"}</ask_user>. " +
+		"You may use legacy single-question shape if only one field is missing. No markdown, no explanation outside tags. " +
+		"If you already started asking via ask_user, keep using ask_user for each next follow-up until all required info is collected. Continue normal answering only after information is sufficient."
 }
 
 func buildContainerMountGuardPrompt() string {
@@ -391,6 +429,8 @@ func (a *OpenAICompatibleAdapter) readStream(resp *http.Response, emit EmitFunc)
 	contentStarted := false
 	assistantContent := ""
 	toolCallBuffers := map[int]*ToolCall{}
+	contentMode := "unknown"
+	pendingProbe := ""
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -454,7 +494,9 @@ func (a *OpenAICompatibleAdapter) readStream(resp *http.Response, emit EmitFunc)
 					}
 					contentStarted = true
 					assistantContent += contentText
-					if err := emit("content", map[string]string{"delta": contentText}); err != nil {
+					var err error
+					contentMode, pendingProbe, err = emitContentWithAskDetection(emit, contentMode, pendingProbe, contentText)
+					if err != nil {
 						return nil, err
 					}
 				}
@@ -499,7 +541,9 @@ func (a *OpenAICompatibleAdapter) readStream(resp *http.Response, emit EmitFunc)
 				}
 				contentStarted = true
 				assistantContent += contentText
-				if err := emit("content", map[string]string{"delta": contentText}); err != nil {
+				var err error
+				contentMode, pendingProbe, err = emitContentWithAskDetection(emit, contentMode, pendingProbe, contentText)
+				if err != nil {
 					return nil, err
 				}
 			}
@@ -519,9 +563,40 @@ func (a *OpenAICompatibleAdapter) readStream(resp *http.Response, emit EmitFunc)
 			}
 			if contentText != "" {
 				assistantContent += contentText
-				if err := emit("content", map[string]string{"delta": contentText}); err != nil {
+				var err error
+				contentMode, pendingProbe, err = emitContentWithAskDetection(emit, contentMode, pendingProbe, contentText)
+				if err != nil {
 					return nil, err
 				}
+			}
+		}
+	}
+
+	var askPayload *askUserPayload
+	if contentMode == "unknown" && pendingProbe != "" {
+		trimmed := strings.TrimLeft(pendingProbe, " \t\r\n")
+		if !isAskUserPrefixCandidate(trimmed) {
+			if err := emit("content", map[string]string{"delta": pendingProbe}); err != nil {
+				return nil, err
+			}
+			contentMode = "normal"
+		} else if strings.HasPrefix(trimmed, askUserOpenTag) {
+			contentMode = "ask"
+		}
+		pendingProbe = ""
+	}
+	if contentMode == "ask" {
+		if parsed, ok := parseAskUserPayload(assistantContent); ok {
+			askPayload = parsed
+			assistantContent = ""
+			finishReason = "ask_user"
+			if err := emit("ask_user", parsed); err != nil {
+				return nil, err
+			}
+		} else {
+			contentMode = "normal"
+			if err := emit("content", map[string]string{"delta": assistantContent}); err != nil {
+				return nil, err
 			}
 		}
 	}
@@ -536,7 +611,154 @@ func (a *OpenAICompatibleAdapter) readStream(resp *http.Response, emit EmitFunc)
 		AssistantContent: assistantContent,
 		ToolCalls:        collectToolCalls(toolCallBuffers),
 	}
+	if askPayload != nil {
+		result.AssistantContent = ""
+	}
 	return result, nil
+}
+
+func emitContentWithAskDetection(emit EmitFunc, mode string, pendingProbe string, delta string) (string, string, error) {
+	switch mode {
+	case "normal":
+		if err := emit("content", map[string]string{"delta": delta}); err != nil {
+			return mode, pendingProbe, err
+		}
+		return mode, pendingProbe, nil
+	case "ask":
+		return mode, pendingProbe, nil
+	default:
+		pendingProbe += delta
+		trimmed := strings.TrimLeft(pendingProbe, " \t\r\n")
+		if isAskUserPrefixCandidate(trimmed) {
+			if strings.HasPrefix(trimmed, askUserOpenTag) {
+				return "ask", pendingProbe, nil
+			}
+			return "unknown", pendingProbe, nil
+		}
+		if err := emit("content", map[string]string{"delta": pendingProbe}); err != nil {
+			return "normal", "", err
+		}
+		return "normal", "", nil
+	}
+}
+
+func isAskUserPrefixCandidate(trimmed string) bool {
+	if trimmed == "" {
+		return true
+	}
+	if strings.HasPrefix(trimmed, askUserOpenTag) {
+		return true
+	}
+	if len(trimmed) <= len(askUserOpenTag) && strings.HasPrefix(askUserOpenTag, trimmed) {
+		return true
+	}
+	return false
+}
+
+func parseAskUserPayload(content string) (*askUserPayload, bool) {
+	trimmed := strings.TrimSpace(content)
+	if !strings.HasPrefix(trimmed, askUserOpenTag) {
+		return nil, false
+	}
+	end := strings.LastIndex(trimmed, askUserCloseTag)
+	if end < 0 {
+		return nil, false
+	}
+	if strings.TrimSpace(trimmed[end+len(askUserCloseTag):]) != "" {
+		return nil, false
+	}
+	jsonPart := strings.TrimSpace(trimmed[len(askUserOpenTag):end])
+	if jsonPart == "" {
+		return nil, false
+	}
+	var payload askUserPayload
+	if err := json.Unmarshal([]byte(jsonPart), &payload); err != nil {
+		return nil, false
+	}
+	payload.Question = strings.TrimSpace(payload.Question)
+	payload.Title = strings.TrimSpace(payload.Title)
+	payload.Description = strings.TrimSpace(payload.Description)
+	payload.FieldKey = strings.TrimSpace(payload.FieldKey)
+	payload.Placeholder = strings.TrimSpace(payload.Placeholder)
+	payload.InputType = strings.TrimSpace(payload.InputType)
+	if payload.InputType != "select" && payload.InputType != "multiselect" {
+		payload.InputType = "text"
+	}
+	filtered := make([]string, 0, len(payload.Options))
+	for _, option := range payload.Options {
+		option = strings.TrimSpace(option)
+		if option != "" {
+			filtered = append(filtered, option)
+		}
+	}
+	payload.Options = filtered
+	if (payload.InputType == "select" || payload.InputType == "multiselect") && len(payload.Options) == 0 {
+		payload.InputType = "text"
+	}
+	if payload.FieldKey == "" {
+		payload.FieldKey = "additional_info"
+	}
+	if !payload.Required {
+		payload.Required = true
+	}
+
+	normalizedFields := make([]askUserField, 0, len(payload.Fields))
+	for i, field := range payload.Fields {
+		field.Key = strings.TrimSpace(field.Key)
+		field.Label = strings.TrimSpace(field.Label)
+		if field.Key == "" {
+			field.Key = fmt.Sprintf("field_%d", i+1)
+		}
+		if field.Label == "" {
+			field.Label = field.Key
+		}
+		field.InputType = strings.TrimSpace(field.InputType)
+		if field.InputType != "select" && field.InputType != "multiselect" {
+			field.InputType = "text"
+		}
+		field.Placeholder = strings.TrimSpace(field.Placeholder)
+		fieldOpts := make([]string, 0, len(field.Options))
+		for _, option := range field.Options {
+			option = strings.TrimSpace(option)
+			if option != "" {
+				fieldOpts = append(fieldOpts, option)
+			}
+		}
+		field.Options = fieldOpts
+		if (field.InputType == "select" || field.InputType == "multiselect") && len(field.Options) == 0 {
+			field.InputType = "text"
+		}
+		if !field.Required {
+			field.Required = true
+		}
+		normalizedFields = append(normalizedFields, field)
+	}
+	payload.Fields = normalizedFields
+	if payload.Question == "" && payload.Title == "" && payload.Description == "" && len(payload.Fields) == 0 {
+		return nil, false
+	}
+	if len(payload.Fields) == 0 {
+		payload.Fields = []askUserField{{
+			Key:         payload.FieldKey,
+			Label:       payload.Question,
+			InputType:   payload.InputType,
+			Placeholder: payload.Placeholder,
+			Options:     payload.Options,
+			Required:    payload.Required,
+		}}
+	}
+	if payload.Title == "" {
+		if payload.Question != "" {
+			payload.Title = payload.Question
+		} else {
+			payload.Title = "请补充以下信息"
+		}
+	}
+	payload.SubmitLabel = strings.TrimSpace(payload.SubmitLabel)
+	if payload.SubmitLabel == "" {
+		payload.SubmitLabel = "提交补充信息"
+	}
+	return &payload, true
 }
 
 func collectToolCalls(m map[int]*ToolCall) []ToolCall {

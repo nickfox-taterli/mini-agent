@@ -529,14 +529,97 @@ html {
 /* ===== User Bubble ===== */
 
 .user-bubble {
-  max-width: min(75%, 600px);
+  display: inline-block;
+  width: auto;
+  min-width: 0;
+  max-width: min(82%, 760px);
   background: var(--user-bubble-bg);
   color: var(--user-bubble-text);
   border-radius: 18px 18px 4px 18px;
-  padding: 14px 20px;
+  padding: 10px 14px;
   font-size: 14px;
-  line-height: 1.65;
-  word-break: break-word;
+  line-height: 1.5;
+  word-break: normal;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.user-bubble.markdown-body p {
+  white-space: inherit;
+}
+
+.user-bubble-compact,
+.user-bubble-compact p {
+  white-space: nowrap;
+}
+
+.user-bubble-compact {
+  width: max-content;
+  max-width: calc(100vw - 140px);
+  padding: 8px 12px;
+}
+
+.user-supplement-bubble {
+  min-width: 0;
+  width: max-content;
+  max-width: min(78vw, 360px);
+  padding: 10px 12px;
+  border-radius: 14px 14px 4px 14px;
+  background: color-mix(in srgb, var(--user-bubble-bg) 88%, #ffffff 12%);
+}
+
+.user-supplement-title {
+  font-size: 11px;
+  line-height: 1.2;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(0, 0, 0, 0.6);
+  margin-bottom: 6px;
+}
+
+.user-supplement-single {
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  max-width: 100%;
+  gap: 8px;
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.user-supplement-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.user-supplement-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: nowrap;
+  gap: 6px;
+  padding: 4px 2px;
+}
+
+.user-supplement-label {
+  flex-shrink: 0;
+  color: rgba(0, 0, 0, 0.7);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.user-supplement-value {
+  color: var(--user-bubble-text);
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.user-supplement-bubble .user-supplement-value {
+  max-width: min(54vw, 320px);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* -- Typography overrides for user bubble (dark text on colored bg) -- */
@@ -569,7 +652,11 @@ html {
 }
 
 .user-bubble p {
-  margin: 6px 0;
+  margin: 0;
+}
+
+.user-bubble p + p {
+  margin-top: 6px;
 }
 
 .user-bubble strong {
@@ -578,8 +665,11 @@ html {
 }
 
 .user-bubble a {
-  color: #0A3D5C;
+  color: #063754;
   text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  word-break: break-all;
 }
 
 .user-bubble ul,
@@ -746,6 +836,121 @@ html {
 .action-btn:hover {
   background: var(--bg-tertiary);
   color: var(--text-primary);
+}
+
+.ask-user-card {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+}
+
+.ask-user-card-title {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.ask-user-card-heading {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.ask-user-card-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+
+.ask-user-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ask-user-field-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ask-user-label {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.ask-user-input {
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  padding: 0 10px;
+  font-size: 14px;
+  font-family: var(--font-sans);
+}
+
+.ask-user-multiselect {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.ask-user-check-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.ask-user-other-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ask-user-other-input {
+  margin-top: 2px;
+}
+
+.ask-user-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.ask-user-submit {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: var(--accent-dim);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.ask-user-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ask-user-answered {
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+@media (max-width: 640px) {
+  .ask-user-submit {
+    width: 100%;
+    align-self: stretch;
+  }
 }
 
 /* ===== Thinking Block ===== */
@@ -1339,7 +1544,7 @@ html {
   }
 
   .user-bubble {
-    max-width: 85%;
+    max-width: 90%;
   }
 
   .markdown-body {

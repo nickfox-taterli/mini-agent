@@ -25,6 +25,74 @@ function estimateTokenCountFromText(text, coefficient) {
   return Math.max(0, Math.round(baseTokenEstimate * coefficient))
 }
 
+function inferAskUserFromPlainQuestion(content, messagesRef) {
+  const text = (content || '').trim()
+  if (!text) return null
+  if (text.length > 220) return null
+  const hasQuestionSignal = /[??]/.test(text) || /请.*(填写|提供|补充)/.test(text)
+  if (!hasQuestionSignal) return null
+  if (/\n/.test(text)) return null
+
+  const msgs = Array.isArray(messagesRef?.value) ? messagesRef.value : []
+  const currentAssistantIdx = msgs.length - 1
+  const prevUser = msgs.slice(0, currentAssistantIdx).reverse().find((m) => m.role === 'user')
+  if (!prevUser) return null
+  if (!/^补充信息(\(.+?\))?:/.test((prevUser.content || '').trim())) return null
+
+  return {
+    title: text,
+    description: '',
+    fields: [{
+      key: 'additional_info',
+      label: '补充信息',
+      input_type: 'text',
+      options: [],
+      placeholder: '请输入补充信息',
+      required: true
+    }],
+    submit_label: '提交补充信息',
+    answered: false
+  }
+}
+
+function normalizeAskField(field, index) {
+  const key = (field?.key || '').trim() || `field_${index + 1}`
+  const label = (field?.label || '').trim() || key
+  const inputType = field?.input_type === 'multiselect' ? 'multiselect' : (field?.input_type === 'select' ? 'select' : 'text')
+  const options = Array.isArray(field?.options) ? field.options.map((item) => String(item || '').trim()).filter(Boolean) : []
+  return {
+    key,
+    label,
+    input_type: (inputType !== 'text' && options.length === 0) ? 'text' : inputType,
+    options,
+    placeholder: (field?.placeholder || '').trim(),
+    required: field?.required !== false
+  }
+}
+
+function normalizeAskUserPayload(payload) {
+  const fields = Array.isArray(payload?.fields) ? payload.fields.map(normalizeAskField).filter(Boolean) : []
+  if (!fields.length) {
+    fields.push(normalizeAskField({
+      key: payload?.field_key,
+      label: payload?.question || '补充信息',
+      input_type: payload?.input_type,
+      options: payload?.options,
+      placeholder: payload?.placeholder,
+      required: payload?.required
+    }, 0))
+  }
+  const title = (payload?.title || payload?.question || '').trim() || '请补充以下信息'
+  const description = (payload?.description || '').trim()
+  return {
+    title,
+    description,
+    fields,
+    submit_label: (payload?.submit_label || '').trim() || '提交补充信息',
+    answered: false
+  }
+}
+
 export function useChatStream(apiBase, renderMarkdown, authHeaders) {
   // 状态
   const loading = ref(false)
@@ -369,6 +437,19 @@ export function useChatStream(apiBase, renderMarkdown, authHeaders) {
             assistant.retrying = null; await scrollToBottom()
           }
 
+          if (event === 'ask_user') {
+            closeCurrentTextStep('reasoning')
+            closeCurrentTextStep('content')
+            resetWorkingHard()
+            assistant.askUser = reactive(normalizeAskUserPayload(payload))
+            if (!assistant.content && assistant.askUser.title) {
+              assistant.content = assistant.askUser.title
+              assistant.renderedContent = renderMarkdown(assistant.askUser.title)
+              refreshTokenStats(assistant)
+            }
+            await scrollToBottom()
+          }
+
           if (event === 'retrying') {
             resetWorkingHard()
             assistant.retrying = { attempt: payload.attempt, maxAttempts: payload.max_attempts, delaySeconds: payload.delay_seconds }
@@ -392,6 +473,10 @@ export function useChatStream(apiBase, renderMarkdown, authHeaders) {
             closeCurrentTextStep('content')
             resetWorkingHard(); assistant.reasoningDone = true
             assistant.thinkingDuration = (Date.now() - assistant.thinkingStartTime) / 1000
+            if (!assistant.askUser) {
+              const inferredAsk = inferAskUserFromPlainQuestion(assistant.content, messages)
+              if (inferredAsk) assistant.askUser = reactive(normalizeAskUserPayload(inferredAsk))
+            }
             assistant.renderedContent = renderMarkdown(assistant.content)
             refreshTokenStats(assistant)
             doneReceived = true; break
@@ -412,15 +497,19 @@ export function useChatStream(apiBase, renderMarkdown, authHeaders) {
     }
   }
 
-  async function sendMessage({ input, messages, attachedFiles, textareaRef, expandedThinking, saveCurrentMessages, generateTitleAsync, currentConversationId }) {
+  async function sendMessage({ input, messages, attachedFiles, textareaRef, expandedThinking, saveCurrentMessages, generateTitleAsync, currentConversationId, forcedText = null }) {
     if (loading.value) { stopGeneration(); return }
     if (conversationStreaming.value) return
-    if (!input.value.trim() && attachedFiles.value.length === 0) return
+    const rawForcedText = typeof forcedText === 'string' ? forcedText.trim() : ''
+    const userInput = rawForcedText || input.value.trim()
+    if (!userInput && attachedFiles.value.length === 0) return
 
-    const userText = input.value.trim()
-    input.value = ''
-    await nextTick()
-    if (textareaRef.value) textareaRef.value.style.height = 'auto'
+    const userText = userInput
+    if (!rawForcedText) {
+      input.value = ''
+      await nextTick()
+      if (textareaRef.value) textareaRef.value.style.height = 'auto'
+    }
 
     let finalText = userText
     if (attachedFiles.value.length > 0) {
@@ -442,7 +531,7 @@ export function useChatStream(apiBase, renderMarkdown, authHeaders) {
     const assistant = reactive({
       role: 'assistant', reasoning: '', content: '', reasoningDone: false,
       thinkingDuration: null, thinkingStartTime: Date.now(), retrying: null,
-      renderedContent: '', renderedReasoning: '', toolCalls: [], processTimeline: [],
+      renderedContent: '', renderedReasoning: '', toolCalls: [], processTimeline: [], askUser: null,
       tokenTotal: null, tokenPerSecond: null
     })
     messages.value.push(assistant)
@@ -462,7 +551,7 @@ export function useChatStream(apiBase, renderMarkdown, authHeaders) {
     const assistant = reactive({
       role: 'assistant', reasoning: '', content: '', reasoningDone: false,
       thinkingDuration: null, thinkingStartTime: Date.now(), retrying: null,
-      renderedContent: '', renderedReasoning: '', toolCalls: [], processTimeline: [],
+      renderedContent: '', renderedReasoning: '', toolCalls: [], processTimeline: [], askUser: null,
       tokenTotal: null, tokenPerSecond: null
     })
     messages.value.push(assistant)

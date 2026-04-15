@@ -157,6 +157,38 @@ async function handleSend() {
   })
 }
 
+async function handleAskSubmit({ msgIdx, values, answers }) {
+  const labelMap = new Map((answers || []).map(item => [item.key, item.label || item.key]))
+  const entries = Object.entries(values || {}).filter(([, value]) => {
+    if (Array.isArray(value)) return value.length > 0
+    return String(value || '').trim() !== ''
+  })
+  if (entries.length === 0) return
+  const targetMsg = messages.value[msgIdx]
+  if (targetMsg?.askUser) {
+    targetMsg.askUser.answered = true
+    targetMsg.askUser.answer = entries.map(([key, value]) => {
+      const label = labelMap.get(key) || key
+      if (Array.isArray(value)) return `${label}: ${value.join(',')}`
+      return `${label}: ${value}`
+    }).join(' | ')
+  }
+  const lines = entries.map(([key, value]) => {
+    const label = labelMap.get(key) || key
+    if (Array.isArray(value)) return `- ${label}: ${value.join(',')}`
+    return `- ${label}: ${value}`
+  })
+  const userText = `补充信息:\n${lines.join('\n')}`
+  await syncConversationState(currentConversationId.value)
+  await sendMessage({
+    input, messages, attachedFiles, textareaRef, expandedThinking,
+    saveCurrentMessages: () => saveCurrentMessages(messages),
+    generateTitleAsync,
+    currentConversationId,
+    forcedText: userText
+  })
+}
+
 // 重新生成回复
 async function handleRegenerate(idx) {
   await regenerate({
@@ -389,6 +421,7 @@ watch(currentConversationId, (id) => {
               @regenerate="handleRegenerate"
               @open-thinking-detail="openThinkingDetail"
               @open-tool-detail="openToolDetail"
+              @submit-ask="handleAskSubmit"
             />
           </div>
         </div>

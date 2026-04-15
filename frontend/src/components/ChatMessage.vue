@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 
 const props = defineProps({
   msg: { type: Object, required: true },
@@ -14,7 +14,7 @@ const props = defineProps({
   getThinkingDuration: { type: Function, required: true }
 })
 
-const emit = defineEmits(['copy-code', 'regenerate', 'open-thinking-detail', 'open-tool-detail'])
+const emit = defineEmits(['copy-code', 'regenerate', 'open-thinking-detail', 'open-tool-detail', 'submit-ask'])
 
 const isComplete = computed(() => !props.isLast || !props.loading)
 const copyLabel = ref('复制Markdown')
@@ -42,13 +42,150 @@ const latestToolCall = computed(() => {
 const showTagsRow = computed(() => {
   return showThinkingTag.value || !!latestToolCall.value || (props.toolCalling && props.isLast)
 })
+
+const askValues = ref({})
+const askOtherValues = ref({})
+
+watch(
+  () => props.msg.askUser,
+  (askUser) => {
+    if (!askUser) {
+      askValues.value = {}
+      askOtherValues.value = {}
+      return
+    }
+    const nextValues = {}
+    const nextOther = {}
+    for (const field of askUser.fields || []) {
+      const options = Array.isArray(field.options) ? field.options : []
+      if (field.input_type === 'select') {
+        nextValues[field.key] = options[0] || ''
+      } else if (field.input_type === 'multiselect') {
+        nextValues[field.key] = options[0] ? [options[0]] : []
+      } else {
+        nextValues[field.key] = ''
+      }
+      nextOther[field.key] = ''
+    }
+    askValues.value = nextValues
+    askOtherValues.value = nextOther
+  },
+  { immediate: true }
+)
+
+function getFieldAnswer(field) {
+  if (field.input_type === 'multiselect') {
+    const picked = Array.isArray(askValues.value[field.key]) ? [...askValues.value[field.key]] : []
+    const other = (askOtherValues.value[field.key] || '').trim()
+    if (other) picked.push(other)
+    return picked
+  }
+  const value = String(askValues.value[field.key] || '').trim()
+  if (value === '__other__') return String(askOtherValues.value[field.key] || '').trim()
+  return value
+}
+
+const canSubmitAsk = computed(() => {
+  const askUser = props.msg.askUser
+  if (!askUser || askUser.answered) return false
+  for (const field of askUser.fields || []) {
+    if (!field.required) continue
+    const value = getFieldAnswer(field)
+    if (Array.isArray(value)) {
+      if (value.length === 0) return false
+    } else if (!String(value || '').trim()) {
+      return false
+    }
+  }
+  return true
+})
+
+const supplementRows = computed(() => {
+  if (props.msg.role !== 'user') return null
+  const raw = String(props.msg.content || '').trim()
+  if (!raw.startsWith('补充信息')) return null
+  const lines = raw.split('\n').map(line => line.trim()).filter(Boolean)
+  const rows = []
+
+  for (const line of lines) {
+    if (!line.startsWith('- ')) continue
+    const item = line.slice(2).trim()
+    const idx = item.indexOf(':')
+    if (idx <= 0) continue
+    const label = item.slice(0, idx).trim()
+    const value = item.slice(idx + 1).trim()
+    if (!label || !value) continue
+    rows.push({ label, value })
+  }
+  return rows.length ? rows : null
+})
+
+const singleSupplementRow = computed(() => {
+  if (!supplementRows.value || supplementRows.value.length !== 1) return null
+  return supplementRows.value[0]
+})
+
+const compactUserBubble = computed(() => {
+  if (props.msg.role !== 'user') return false
+  if (supplementRows.value) return false
+  const raw = String(props.msg.content || '')
+  if (!raw || raw.includes('\n')) return false
+  if (/[`*_#[\]|]/.test(raw)) return false
+  return raw.trim().length <= 20
+})
+
+function toggleMultiOption(fieldKey, option, checked) {
+  const list = Array.isArray(askValues.value[fieldKey]) ? [...askValues.value[fieldKey]] : []
+  const has = list.includes(option)
+  if (checked && !has) list.push(option)
+  if (!checked && has) list.splice(list.indexOf(option), 1)
+  askValues.value[fieldKey] = list
+}
+
+function submitAsk() {
+  const askUser = props.msg.askUser
+  if (!askUser || askUser.answered) return
+  if (!canSubmitAsk.value) return
+  const values = {}
+  for (const field of askUser.fields || []) {
+    values[field.key] = getFieldAnswer(field)
+  }
+  const answers = (askUser.fields || []).map(field => ({
+    key: field.key,
+    label: (field.label || field.key || '').trim() || field.key,
+    value: values[field.key]
+  }))
+  emit('submit-ask', {
+    msgIdx: props.idx,
+    values,
+    answers
+  })
+}
 </script>
 
 <template>
   <div class="msg" :class="`msg-${msg.role}`">
     <template v-if="msg.role === 'user'">
       <div class="user-message">
-        <div class="user-bubble markdown-body" v-html="msg.renderedContent"></div>
+        <div v-if="supplementRows" class="user-bubble user-supplement-bubble">
+          <div class="user-supplement-title">补充信息</div>
+          <div v-if="singleSupplementRow" class="user-supplement-single">
+            <span class="user-supplement-label">{{ singleSupplementRow.label }}</span>
+            <span class="user-supplement-value">{{ singleSupplementRow.value }}</span>
+          </div>
+          <div v-else class="user-supplement-list">
+            <div v-for="(row, rowIdx) in supplementRows" :key="`${row.label}-${rowIdx}`" class="user-supplement-row">
+              <span class="user-supplement-label">{{ row.label }}</span>
+              <span class="user-supplement-value">{{ row.value }}</span>
+            </div>
+          </div>
+        </div>
+        <div
+          v-else
+          class="user-bubble markdown-body"
+          :class="{ 'user-bubble-compact': compactUserBubble }"
+          v-html="msg.renderedContent"
+        ></div>
         <div v-if="msg.content" class="message-actions user-message-actions">
           <button class="action-btn" @click="handleCopyMarkdown" title="复制Markdown">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
@@ -109,6 +246,65 @@ const showTagsRow = computed(() => {
           v-html="msg.renderedContent"
           @click="emit('copy-code', $event)"
         ></div>
+        <div v-if="msg.askUser && !msg.askUser.answered" class="ask-user-card">
+          <div class="ask-user-card-title">请补充信息</div>
+          <div v-if="msg.askUser.title" class="ask-user-card-heading">{{ msg.askUser.title }}</div>
+          <div v-if="msg.askUser.description" class="ask-user-card-desc">{{ msg.askUser.description }}</div>
+          <div class="ask-user-form">
+            <div v-for="field in msg.askUser.fields || []" :key="field.key" class="ask-user-field-block">
+              <label class="ask-user-label">{{ field.label }}</label>
+              <select
+                v-if="field.input_type === 'select'"
+                v-model="askValues[field.key]"
+                class="ask-user-input"
+              >
+                <option v-for="option in field.options || []" :key="option" :value="option">{{ option }}</option>
+                <option value="__other__">其他(手动输入)</option>
+              </select>
+              <div v-else-if="field.input_type === 'multiselect'" class="ask-user-multiselect">
+                <label v-for="option in field.options || []" :key="option" class="ask-user-check-item">
+                  <input
+                    type="checkbox"
+                    :checked="Array.isArray(askValues[field.key]) && askValues[field.key].includes(option)"
+                    @change="toggleMultiOption(field.key, option, $event.target.checked)"
+                  />
+                  <span>{{ option }}</span>
+                </label>
+              </div>
+              <input
+                v-if="field.input_type === 'text'"
+                v-model="askValues[field.key]"
+                class="ask-user-input"
+                type="text"
+                :placeholder="field.placeholder || '请输入补充信息'"
+              />
+              <input
+                v-if="field.input_type === 'select' && askValues[field.key] === '__other__'"
+                v-model="askOtherValues[field.key]"
+                class="ask-user-input ask-user-other-input"
+                type="text"
+                :placeholder="field.placeholder || '请输入其他选项'"
+              />
+              <div v-if="field.input_type === 'multiselect'" class="ask-user-other-wrap">
+                <label class="ask-user-check-item">
+                  <span>其他(手动输入)</span>
+                </label>
+                <input
+                  v-model="askOtherValues[field.key]"
+                  class="ask-user-input ask-user-other-input"
+                  type="text"
+                  :placeholder="field.placeholder || '请输入其他选项'"
+                />
+              </div>
+            </div>
+            <button class="ask-user-submit" :disabled="!canSubmitAsk || loading" @click="submitAsk">
+              {{ msg.askUser.submit_label || '提交补充信息' }}
+            </button>
+          </div>
+        </div>
+        <div v-else-if="msg.askUser && msg.askUser.answered && msg.askUser.answer" class="ask-user-answered">
+          已补充: {{ msg.askUser.answer }}
+        </div>
         <!-- 操作按钮 -->
         <div v-if="isComplete && msg.content" class="message-actions">
           <button class="action-btn" @click="emit('regenerate', idx)" title="重新回答">
