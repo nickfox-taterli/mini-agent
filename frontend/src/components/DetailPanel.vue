@@ -329,5 +329,27 @@ function statusLabel(toolCall) {
     width: 100vw;
     max-width: 100vw;
   }
+
+  .detail-panel-header {
+    padding: 12px 16px;
+  }
+
+  .detail-panel-body {
+    padding: 12px 16px;
+  }
+
+  .detail-panel-close {
+    width: 44px;
+    height: 44px;
+  }
+
+  .detail-json {
+    font-size: 12px;
+    padding: 10px 12px;
+  }
+
+  .detail-section-title {
+    font-size: 11px;
+  }
 }
 </style>

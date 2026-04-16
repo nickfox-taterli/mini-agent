@@ -28,18 +28,6 @@ const props = defineProps({
   isDragging: {
     type: Boolean,
     default: false
-  },
-  selectedBackendId: {
-    type: String,
-    default: ''
-  },
-  apiBase: {
-    type: String,
-    default: ''
-  },
-  tokenStats: {
-    type: Object,
-    default: () => ({ estimatedTokens: 0, tokensPerSecond: 0, coefficient: 1 })
   }
 })
 
@@ -165,8 +153,5 @@ onMounted(() => {
       <span class="attachment-name">{{ file.name }}</span>
       <button class="attachment-remove" @click="emit('remove-attached', index)" title="移除附件">&times;</button>
     </div>
-  </div>
-  <div class="meta">
-    后端: {{ selectedBackendId || '未连接' }} | API: {{ apiBase }} | Token: {{ tokenStats.estimatedTokens }} | Token/s: {{ tokenStats.tokensPerSecond.toFixed(2) }} | 系数: {{ tokenStats.coefficient }}
   </div>
 </template>

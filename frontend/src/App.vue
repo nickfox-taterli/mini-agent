@@ -10,7 +10,13 @@ import { useAuth } from './composables/useAuth'
 import { useConversations } from './composables/useConversations'
 import { useChatStream } from './composables/useChatStream'
 
-const apiBase = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:18888'
+function resolveApiBase() {
+  if (import.meta.env.VITE_API_BASE) return import.meta.env.VITE_API_BASE
+  const { protocol, hostname } = window.location
+  return `${protocol}//${hostname}:18888`
+}
+
+const apiBase = resolveApiBase()
 
 // composables
 const { renderMarkdown, copyCode } = useMarkdown()
@@ -383,6 +389,7 @@ watch(currentConversationId, (id) => {
 
   <!-- 正常应用 -->
   <div v-else class="app-layout">
+    <div v-if="sidebarOpen" class="sidebar-backdrop" @click="toggleSidebar"></div>
     <Sidebar
       :conversations="conversations"
       :current-conversation-id="currentConversationId"
@@ -435,10 +442,7 @@ watch(currentConversationId, (id) => {
             :attached-files="attachedFiles"
             :uploading="uploading"
             :is-dragging="isDragging"
-            :selected-backend-id="selectedBackendId"
-            :api-base="apiBase"
             :conversation-streaming="conversationStreaming"
-            :token-stats="tokenStats"
             @update:input="input = $event"
             @send="handleSend"
             @file-select="handleFileSelect"
