@@ -83,13 +83,21 @@ func TestStreamChat_Success(t *testing.T) {
 	}
 }
 
-func TestStreamChat_ConversationLockConflict(t *testing.T) {
+func TestStreamChat_ConversationQueue(t *testing.T) {
 	started := make(chan struct{}, 1)
 	release := make(chan struct{})
 	var once sync.Once
+	var mu sync.Mutex
+	callCount := 0
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		once.Do(func() { close(started) })
-		<-release
+		mu.Lock()
+		callCount++
+		curr := callCount
+		mu.Unlock()
+		if curr == 1 {
+			once.Do(func() { close(started) })
+			<-release
+		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n"))
 		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n"))
@@ -138,20 +146,34 @@ func TestStreamChat_ConversationLockConflict(t *testing.T) {
 		t.Fatal("timeout waiting first stream to start")
 	}
 
-	req2 := httptest.NewRequest(http.MethodPost, "/api/chat/stream", bytes.NewReader(payload))
-	req2.Header.Set("Content-Type", "application/json")
-	w2 := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(w2, req2)
-
-	if w2.Code != http.StatusConflict {
-		t.Fatalf("second stream expected 409, got %d", w2.Code)
+	body2 := map[string]any{
+		"conversation_id": "conv-lock",
+		"messages":        []map[string]string{{"role": "user", "content": "第二条"}},
 	}
-	if !strings.Contains(w2.Body.String(), "conversation_streaming") {
-		t.Fatalf("expected conversation_streaming code, got: %s", w2.Body.String())
+	payload2, _ := json.Marshal(body2)
+	doneSecond := make(chan struct{})
+	go func() {
+		defer close(doneSecond)
+		req := httptest.NewRequest(http.MethodPost, "/api/chat/stream", bytes.NewReader(payload2))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		srv.Handler().ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Errorf("second stream expected 200, got %d", w.Code)
+		}
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+	reqState := httptest.NewRequest(http.MethodGet, "/api/conversations/conv-lock/state", nil)
+	wState := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(wState, reqState)
+	if !strings.Contains(wState.Body.String(), `"queue_length":1`) {
+		t.Fatalf("expected queue_length 1, got: %s", wState.Body.String())
 	}
 
 	close(release)
 	<-doneFirst
+	<-doneSecond
 }
 
 func TestConversationState_StreamingFlag(t *testing.T) {
@@ -233,12 +255,14 @@ func TestConversationState_StreamingFlag(t *testing.T) {
 	}
 }
 
-func TestConversationState_ReleaseOnClientCancel(t *testing.T) {
+func TestConversationState_NotReleaseOnClientCancel(t *testing.T) {
+	release := make(chan struct{})
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		select {
-		case <-r.Context().Done():
-		case <-time.After(5 * time.Second):
-		}
+		<-release
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
 	}))
 	defer upstream.CloseClientConnections()
 	defer upstream.Close()
@@ -293,21 +317,22 @@ func TestConversationState_ReleaseOnClientCancel(t *testing.T) {
 
 	cancel()
 
-	var unlocked bool
-	for i := 0; i < 50; i++ {
+	var stillLocked bool
+	for i := 0; i < 20; i++ {
 		reqState := httptest.NewRequest(http.MethodGet, "/api/conversations/conv-cancel/state", nil)
 		wState := httptest.NewRecorder()
 		srv.Handler().ServeHTTP(wState, reqState)
-		if strings.Contains(wState.Body.String(), `"is_streaming":false`) {
-			unlocked = true
+		if strings.Contains(wState.Body.String(), `"is_streaming":true`) {
+			stillLocked = true
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if !unlocked {
-		t.Fatal("expected conversation lock to release after cancel")
+	if !stillLocked {
+		t.Fatal("expected conversation task still streaming after client cancel")
 	}
 
+	close(release)
 	<-doneReq
 }
 

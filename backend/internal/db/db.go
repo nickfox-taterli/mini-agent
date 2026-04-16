@@ -37,6 +37,11 @@ const (
 	defaultTokenPerSecond = 1.0
 )
 
+// Ready reports whether database has been initialized.
+func Ready() bool {
+	return globalDB != nil
+}
+
 // Init 初始化数据库连接并建表.
 func Init(dbPath string) error {
 	dir := filepath.Dir(dbPath)

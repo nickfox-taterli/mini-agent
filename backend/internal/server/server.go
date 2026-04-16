@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -13,7 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"sync"
+	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -42,49 +43,10 @@ type streamChatReq struct {
 }
 
 type conversationStreamState struct {
-	IsStreaming bool `json:"is_streaming"`
-}
-
-type conversationStreamRegistry struct {
-	mu        sync.Mutex
-	streaming map[string]bool
-}
-
-func newConversationStreamRegistry() *conversationStreamRegistry {
-	return &conversationStreamRegistry{
-		streaming: make(map[string]bool),
-	}
-}
-
-func (r *conversationStreamRegistry) acquire(conversationID string) bool {
-	if strings.TrimSpace(conversationID) == "" {
-		return true
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.streaming[conversationID] {
-		return false
-	}
-	r.streaming[conversationID] = true
-	return true
-}
-
-func (r *conversationStreamRegistry) release(conversationID string) {
-	if strings.TrimSpace(conversationID) == "" {
-		return
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	delete(r.streaming, conversationID)
-}
-
-func (r *conversationStreamRegistry) isStreaming(conversationID string) bool {
-	if strings.TrimSpace(conversationID) == "" {
-		return false
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.streaming[conversationID]
+	IsStreaming   bool   `json:"is_streaming"`
+	QueueLength   int    `json:"queue_length"`
+	CurrentTaskID string `json:"current_task_id,omitempty"`
+	LastError     string `json:"last_error,omitempty"`
 }
 
 var attachmentLinkPattern = regexp.MustCompile(`\[[^\]]*附件[^\]]*\]\((https?://[^)\s]+)\)`)
@@ -291,35 +253,6 @@ func (s *Server) handleStreamChat(c *gin.Context) {
 
 	req.Messages = preprocessUploadedFilePaths(req.Messages)
 	conversationID := strings.TrimSpace(req.ConversationID)
-	stopWatchRelease := make(chan struct{})
-	if conversationID != "" {
-		if !s.streamState.acquire(conversationID) {
-			c.JSON(http.StatusConflict, gin.H{
-				"error":        "conversation is streaming",
-				"code":         "conversation_streaming",
-				"is_streaming": true,
-			})
-			return
-		}
-		var releaseOnce sync.Once
-		release := func() {
-			releaseOnce.Do(func() {
-				s.streamState.release(conversationID)
-			})
-		}
-		defer func() {
-			close(stopWatchRelease)
-			release()
-		}()
-		go func(ctxDone <-chan struct{}) {
-			select {
-			case <-ctxDone:
-				release()
-			case <-stopWatchRelease:
-			}
-		}(c.Request.Context().Done())
-	}
-
 	adapter, err := s.m.Pick(req.BackendID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -338,7 +271,7 @@ func (s *Server) handleStreamChat(c *gin.Context) {
 		return
 	}
 
-	emit := func(event string, payload any) error {
+	writeSSE := func(event string, payload any) error {
 		b, err := json.Marshal(payload)
 		if err != nil {
 			return err
@@ -353,9 +286,59 @@ func (s *Server) handleStreamChat(c *gin.Context) {
 		return nil
 	}
 
-	if err := adapter.StreamChat(c.Request.Context(), backend.StreamRequest{Messages: req.Messages}, emit); err != nil {
-		_ = emit("error", map[string]string{"message": err.Error()})
+	if conversationID == "" {
+		taskCtx, cancel := context.WithTimeout(context.Background(), taskTimeout)
+		defer cancel()
+		if err := adapter.StreamChat(taskCtx, backend.StreamRequest{Messages: req.Messages}, writeSSE); err != nil {
+			_ = writeSSE("error", map[string]string{"message": err.Error()})
+		}
+		return
 	}
+
+	fingerprintBytes, _ := json.Marshal(struct {
+		BackendID string            `json:"backend_id"`
+		Messages  []backend.Message `json:"messages"`
+	}{
+		BackendID: adapter.ID(),
+		Messages:  req.Messages,
+	})
+	task := &streamTask{
+		id:          randomTaskID(),
+		backendID:   adapter.ID(),
+		fingerprint: string(fingerprintBytes),
+		adapter:     adapter,
+		req:         backend.StreamRequest{Messages: req.Messages},
+	}
+	subID, ch, snapshot, enqueued := s.streamState.enqueueAndSubscribe(conversationID, task)
+	defer s.streamState.unsubscribe(conversationID, subID)
+
+	if err := writeSSE("snapshot", snapshot); err != nil {
+		return
+	}
+	if enqueued {
+		_ = writeSSE("queued", map[string]any{"task_id": task.id})
+	}
+
+	ctxDone := c.Request.Context().Done()
+	for {
+		select {
+		case <-ctxDone:
+			return
+		case env, ok := <-ch:
+			if !ok {
+				return
+			}
+			if err := writeSSE(env.Event, env.Payload); err != nil {
+				return
+			}
+		}
+	}
+}
+
+func randomTaskID() string {
+	b := make([]byte, 6)
+	_, _ = rand.Read(b)
+	return fmt.Sprintf("task_%d_%x", time.Now().UnixNano(), b)
 }
 
 // preprocessUploadedFilePaths 将用户消息中的附件 URL 补充为本地绝对路径提示.
@@ -489,9 +472,7 @@ func (s *Server) handleGetConversationState(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "conversation id is required"})
 		return
 	}
-	state := conversationStreamState{
-		IsStreaming: s.streamState.isStreaming(id),
-	}
+	state := s.streamState.getState(id)
 	c.JSON(http.StatusOK, state)
 }
 
