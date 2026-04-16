@@ -53,6 +53,11 @@ func BuildSystemPrompt(sk []Skill) string {
 		return ""
 	}
 
+	skillByName := make(map[string]Skill, len(sk))
+	for _, item := range sk {
+		skillByName[strings.ToLower(strings.TrimSpace(item.Name))] = item
+	}
+
 	var b strings.Builder
 	b.WriteString("You can use local skills installed on the server.\n")
 	b.WriteString("When a request matches a skill, follow the corresponding SKILL.md.\n")
@@ -62,6 +67,22 @@ func BuildSystemPrompt(sk []Skill) string {
 	b.WriteString("3) Do NOT start with `python_*` or `code_*` containers when a matching skill exists.\n")
 	b.WriteString("4) `python_*` / `code_*` are fallback only when no skill fits, or the skill workflow clearly fails.\n")
 	b.WriteString("5) If using fallback containers, explicitly state why skill path is not used.\n")
+	b.WriteString("File-type routing policy (STRICT):\n")
+	if _, ok := skillByName["minimax-xlsx"]; ok {
+		b.WriteString("- For `.xlsx` / `.xls` / `.xlsm` spreadsheet tasks, MUST try skill `minimax-xlsx` first.\n")
+	}
+	if _, ok := skillByName["minimax-docx"]; ok {
+		b.WriteString("- For `.docx` document tasks, MUST try skill `minimax-docx` first.\n")
+	}
+	if _, ok := skillByName["minimax-pdf"]; ok {
+		b.WriteString("- For `.pdf` generation/edit/fill/reformat tasks, MUST try skill `minimax-pdf` first.\n")
+	}
+	if _, ok := skillByName["pptx-generator"]; ok {
+		b.WriteString("- For `.pptx` presentation read/edit/create tasks, MUST try skill `pptx-generator` first.\n")
+	}
+	b.WriteString("- If a matching file-type skill is installed, do NOT start with `python_*` or LibreOffice tools.\n")
+	b.WriteString("- Fallback is allowed only after tool/runtime failure, timeout, or unsupported operation in that skill.\n")
+	b.WriteString("- When fallback happens, explicitly report: attempted skill + failure reason + chosen fallback tool.\n")
 	b.WriteString("Installed skills:\n")
 	for _, item := range sk {
 		b.WriteString("- ")
