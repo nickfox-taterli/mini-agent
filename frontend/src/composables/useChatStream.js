@@ -12,6 +12,18 @@ const THINKING_DONE_PHRASES = ['大功告成']
 
 const DEFAULT_TOKEN_ESTIMATE_COEFFICIENT = 1
 const ARTIFACT_URL_PATTERN = /(https?:\/\/[^\s)\]]+)/gi
+const VISIBLE_ARTIFACT_EXTENSIONS = new Set([
+  'pptx', 'ppt',
+  'xlsx', 'xls', 'csv',
+  'docx', 'doc',
+  'pdf',
+  'png', 'jpg', 'jpeg', 'webp', 'gif', 'svg',
+  'txt', 'md', 'markdown'
+])
+const INTERMEDIATE_ARTIFACT_NAME_PATTERNS = [
+  /markitdown/i,
+  /search_news/i
+]
 
 function dedupeArtifacts(items) {
   const seen = new Set()
@@ -45,6 +57,22 @@ function inferArtifactTypeFromName(name) {
   return 'file'
 }
 
+function getFileExtension(name) {
+  const clean = String(name || '').split('?')[0].trim().toLowerCase()
+  const index = clean.lastIndexOf('.')
+  if (index <= 0 || index === clean.length - 1) return ''
+  return clean.slice(index + 1)
+}
+
+function shouldDisplayArtifact(name) {
+  const normalizedName = String(name || '').trim()
+  if (!normalizedName || normalizedName === '产物文件') return false
+  if (INTERMEDIATE_ARTIFACT_NAME_PATTERNS.some((pattern) => pattern.test(normalizedName))) return false
+  const extension = getFileExtension(normalizedName)
+  if (!extension) return false
+  return VISIBLE_ARTIFACT_EXTENSIONS.has(extension)
+}
+
 function collectURLsFromAny(value, acc) {
   if (value == null) return
   if (typeof value === 'string') {
@@ -64,15 +92,17 @@ function collectURLsFromAny(value, acc) {
 function extractArtifactsFromToolResult(result) {
   const urls = []
   collectURLsFromAny(result, urls)
-  return dedupeArtifacts(urls.map((url) => {
-    const name = inferArtifactNameFromURL(url)
-    return {
-      url,
-      name,
-      type: inferArtifactTypeFromName(name),
-      source: 'tool'
-    }
-  }))
+  return dedupeArtifacts(
+    urls.map((url) => {
+      const name = inferArtifactNameFromURL(url)
+      return {
+        url,
+        name,
+        type: inferArtifactTypeFromName(name),
+        source: 'tool'
+      }
+    }).filter((item) => shouldDisplayArtifact(item.name))
+  )
 }
 
 function parseTokenEstimateCoefficient(value) {
