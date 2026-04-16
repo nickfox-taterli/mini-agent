@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"taterli-agent-chat/backend/internal/config"
@@ -35,6 +36,7 @@ type OpenAICompatibleAdapter struct {
 	cfg               config.BackendConfig
 	httpClient        *http.Client
 	skillSystemPrompt string
+	keyIdx            uint64 // atomic, round-robin index for API keys
 }
 
 func NewOpenAICompatibleAdapter(cfg config.BackendConfig, skillSystemPrompt string) *OpenAICompatibleAdapter {
@@ -49,6 +51,25 @@ func NewOpenAICompatibleAdapter(cfg config.BackendConfig, skillSystemPrompt stri
 
 func (a *OpenAICompatibleAdapter) ID() string {
 	return a.cfg.ID
+}
+
+// nextKey 以 round-robin 方式返回下一个 API Key.
+func (a *OpenAICompatibleAdapter) nextKey() string {
+	keys := a.cfg.APIKeys
+	if len(keys) == 0 {
+		return a.cfg.APIKey
+	}
+	if len(keys) == 1 {
+		return keys[0]
+	}
+	idx := atomic.AddUint64(&a.keyIdx, 1) % uint64(len(keys))
+	key := keys[idx]
+	suffix := key
+	if len(key) > 8 {
+		suffix = key[len(key)-8:]
+	}
+	log.Printf("[backend-keys] %s using key index %d/%d (...%s)", a.cfg.ID, idx, len(keys), suffix)
+	return key
 }
 
 type openAIStreamReq struct {
@@ -408,7 +429,7 @@ func (a *OpenAICompatibleAdapter) doRequest(ctx context.Context, url string, bod
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+a.cfg.APIKey)
+	httpReq.Header.Set("Authorization", "Bearer "+a.nextKey())
 
 	resp, err := a.httpClient.Do(httpReq)
 	if err != nil {

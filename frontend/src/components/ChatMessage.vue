@@ -42,6 +42,7 @@ const latestToolCall = computed(() => {
 const showTagsRow = computed(() => {
   return showThinkingTag.value || !!latestToolCall.value || (props.toolCalling && props.isLast)
 })
+const artifactList = computed(() => Array.isArray(props.msg.artifacts) ? props.msg.artifacts : [])
 
 const askValues = ref({})
 const askOtherValues = ref({})
@@ -238,6 +239,19 @@ function submitAsk() {
             <span class="tool-tag-spinner"></span>
             <span>{{ toolCallingName || '...' }}</span>
           </div>
+        </div>
+        <div v-if="artifactList.length" class="artifact-list">
+          <a
+            v-for="(artifact, aIdx) in artifactList"
+            :key="`${artifact.url}-${aIdx}`"
+            class="artifact-item"
+            :href="artifact.url"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <span class="artifact-type">{{ artifact.type || 'file' }}</span>
+            <span class="artifact-name">{{ artifact.name || artifact.url }}</span>
+          </a>
         </div>
         <!-- 回答内容 -->
         <div

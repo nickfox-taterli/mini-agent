@@ -25,6 +25,7 @@ type Msg struct {
 	ReasoningDone    bool     `json:"reasoningDone,omitempty"`
 	ThinkingDuration *float64 `json:"thinkingDuration,omitempty"`
 	ToolCalls        string   `json:"toolCalls,omitempty"`
+	Artifacts        string   `json:"artifacts,omitempty"`
 	TokenTotal       *int     `json:"tokenTotal,omitempty"`
 	TokenPerSecond   *float64 `json:"tokenPerSecond,omitempty"`
 }
@@ -54,6 +55,7 @@ func Init(dbPath string) error {
 	}
 	// 迁移: 为已有数据库补齐新增列.
 	runMigration(`ALTER TABLE messages ADD COLUMN tool_calls TEXT NOT NULL DEFAULT ''`)
+	runMigration(`ALTER TABLE messages ADD COLUMN artifacts TEXT NOT NULL DEFAULT ''`)
 	runMigration(`ALTER TABLE messages ADD COLUMN token_total INTEGER NOT NULL DEFAULT 1`)
 	runMigration(`ALTER TABLE messages ADD COLUMN token_per_second REAL NOT NULL DEFAULT 1`)
 	// 对历史无记录数据进行默认回填.
@@ -84,6 +86,7 @@ func createTables() error {
 			reasoning_done INTEGER NOT NULL DEFAULT 0,
 			thinking_duration REAL,
 			tool_calls TEXT NOT NULL DEFAULT '',
+			artifacts TEXT NOT NULL DEFAULT '',
 			token_total INTEGER NOT NULL DEFAULT 10,
 			token_per_second REAL NOT NULL DEFAULT 10,
 			sort_order INTEGER NOT NULL
@@ -136,7 +139,7 @@ func GetConversation(id string) (*Conversation, error) {
 
 func loadMessages(convID string) ([]Msg, error) {
 	rows, err := globalDB.Query(
-		`SELECT role, content, reasoning, reasoning_done, thinking_duration, tool_calls, token_total, token_per_second
+		`SELECT role, content, reasoning, reasoning_done, thinking_duration, tool_calls, artifacts, token_total, token_per_second
 		 FROM messages WHERE conversation_id = ? ORDER BY sort_order ASC`, convID)
 	if err != nil {
 		return nil, err
@@ -151,7 +154,7 @@ func loadMessages(convID string) ([]Msg, error) {
 		var tokenTotal sql.NullInt64
 		var tokenPerSecond sql.NullFloat64
 		if err := rows.Scan(
-			&m.Role, &m.Content, &m.Reasoning, &reasoningDone, &thinkingDuration, &m.ToolCalls, &tokenTotal, &tokenPerSecond,
+			&m.Role, &m.Content, &m.Reasoning, &reasoningDone, &thinkingDuration, &m.ToolCalls, &m.Artifacts, &tokenTotal, &tokenPerSecond,
 		); err != nil {
 			return nil, err
 		}
@@ -218,9 +221,9 @@ func insertMessage(tx *sql.Tx, convID string, m *Msg, order int) error {
 		speed = *m.TokenPerSecond
 	}
 	_, err := tx.Exec(
-		`INSERT INTO messages (conversation_id, role, content, reasoning, reasoning_done, thinking_duration, tool_calls, token_total, token_per_second, sort_order)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		convID, m.Role, m.Content, m.Reasoning, done, dur, m.ToolCalls, total, speed, order)
+		`INSERT INTO messages (conversation_id, role, content, reasoning, reasoning_done, thinking_duration, tool_calls, artifacts, token_total, token_per_second, sort_order)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		convID, m.Role, m.Content, m.Reasoning, done, dur, m.ToolCalls, m.Artifacts, total, speed, order)
 	return err
 }
 

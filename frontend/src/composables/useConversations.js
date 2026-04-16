@@ -52,6 +52,10 @@ export function useConversations(renderMarkdown, apiBase, authHeaders) {
       if (typeof processTimeline === 'string') {
         try { processTimeline = JSON.parse(processTimeline) } catch { processTimeline = [] }
       }
+      let artifacts = m.artifacts
+      if (typeof artifacts === 'string') {
+        try { artifacts = JSON.parse(artifacts) } catch { artifacts = [] }
+      }
       const base = {
         role: m.role, content: m.content,
         renderedContent: renderMarkdown(m.content),
@@ -66,6 +70,7 @@ export function useConversations(renderMarkdown, apiBase, authHeaders) {
         base.retrying = null
         base.toolCalls = toolCalls || []
         base.processTimeline = processTimeline || []
+        base.artifacts = artifacts || []
       }
       return { ...base }
     })
@@ -79,6 +84,7 @@ export function useConversations(renderMarkdown, apiBase, authHeaders) {
       tokenTotal: m.tokenTotal ?? null,
       tokenPerSecond: m.tokenPerSecond ?? null,
       toolCalls: JSON.stringify(m.toolCalls || []),
+      artifacts: JSON.stringify(m.artifacts || []),
       processTimeline: JSON.stringify(m.processTimeline || [])
     }))
   }

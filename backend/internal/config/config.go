@@ -60,15 +60,16 @@ type ServerConfig struct {
 }
 
 type BackendConfig struct {
-	ID             string  `yaml:"id"`
-	Type           string  `yaml:"type"`
-	BaseURL        string  `yaml:"base_url"`
-	APIKey         string  `yaml:"api_key"`
-	Model          string  `yaml:"model"`
-	Temperature    float64 `yaml:"temperature"`
-	ReasoningSplit bool    `yaml:"reasoning_split"`
-	ToolMaxRounds  int     `yaml:"tool_max_rounds"`
-	Enabled        bool    `yaml:"enabled"`
+	ID             string   `yaml:"id"`
+	Type           string   `yaml:"type"`
+	BaseURL        string   `yaml:"base_url"`
+	APIKey         string   `yaml:"api_key"`
+	APIKeys        []string `yaml:"api_keys"`
+	Model          string   `yaml:"model"`
+	Temperature    float64  `yaml:"temperature"`
+	ReasoningSplit bool     `yaml:"reasoning_split"`
+	ToolMaxRounds  int      `yaml:"tool_max_rounds"`
+	Enabled        bool     `yaml:"enabled"`
 }
 
 func Load(path string) (*Config, error) {
@@ -127,6 +128,7 @@ func (c *Config) Validate() error {
 
 	c.normalizeDockerRuntimeDefaults()
 	c.normalizeLibreOfficeDefaults()
+	c.normalizeBackendAPIKeys()
 	if c.DockerRuntime.Enabled {
 		if c.DockerRuntime.MaxLifetimeSeconds <= 0 {
 			return fmt.Errorf("docker_runtime.max_lifetime_seconds must be positive")
@@ -212,5 +214,16 @@ func (c *Config) normalizeLibreOfficeDefaults() {
 	}
 	if c.LibreOffice.PidsLimit <= 0 {
 		c.LibreOffice.PidsLimit = 64
+	}
+}
+
+// normalizeBackendAPIKeys 将 api_key (单 key) 归一化到 api_keys 列表.
+// 向后兼容: 如果 api_keys 为空但 api_key 有值, 自动填充.
+func (c *Config) normalizeBackendAPIKeys() {
+	for i := range c.Backends {
+		b := &c.Backends[i]
+		if len(b.APIKeys) == 0 && strings.TrimSpace(b.APIKey) != "" {
+			b.APIKeys = []string{b.APIKey}
+		}
 	}
 }
