@@ -1079,13 +1079,14 @@ html {
 /* ===== Meowing Indicator (Blue) ===== */
 
 .meowing-indicator {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
+  gap: 8px;
+  padding: 10px 14px;
   margin-bottom: 12px;
-  border-radius: 4px;
-  background: rgba(33, 150, 243, 0.15);
+  border-left: 3px solid #2196F3;
+  border-radius: 0 6px 6px 0;
+  background: var(--bg-tertiary);
   color: #2196F3;
   font-size: 13px;
   font-weight: 500;
