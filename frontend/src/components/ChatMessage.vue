@@ -207,6 +207,10 @@ function submitAsk() {
           <span class="working-hard-spinner"></span>
           <span>正在非常努力干活...</span>
         </div>
+        <!-- 喵喵喵提示: 既不排队重试也不努力干活时显示 -->
+        <div v-else-if="!msg.retrying && (!workingHard || !isLast || toolCalling)" class="meowing-indicator">
+          <span>小午正在喵喵喵...</span>
+        </div>
         <!-- 紧凑标签行: 思考 + 工具调用 -->
         <div v-if="showTagsRow" class="tags-row">
           <!-- 思考标签: 与工具调用互斥,工具调用时隐藏 -->

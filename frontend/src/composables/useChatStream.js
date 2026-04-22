@@ -12,7 +12,7 @@ const THINKING_DONE_PHRASES = ['大功告成']
 
 const DEFAULT_TOKEN_ESTIMATE_COEFFICIENT = 1
 const ARTIFACT_URL_PATTERN = /(https?:\/\/[^\s)\]]+)/gi
-const VISIBLE_ARTIFACT_EXTENSIONS = new Set([
+export const VISIBLE_ARTIFACT_EXTENSIONS = new Set([
   'pptx', 'ppt',
   'xlsx', 'xls', 'csv',
   'docx', 'doc',
@@ -20,7 +20,7 @@ const VISIBLE_ARTIFACT_EXTENSIONS = new Set([
   'png', 'jpg', 'jpeg', 'webp', 'gif', 'svg',
   'txt', 'md', 'markdown'
 ])
-const INTERMEDIATE_ARTIFACT_NAME_PATTERNS = [
+export const INTERMEDIATE_ARTIFACT_NAME_PATTERNS = [
   /markitdown/i,
   /search_news/i
 ]
@@ -57,14 +57,14 @@ function inferArtifactTypeFromName(name) {
   return 'file'
 }
 
-function getFileExtension(name) {
+export function getFileExtension(name) {
   const clean = String(name || '').split('?')[0].trim().toLowerCase()
   const index = clean.lastIndexOf('.')
   if (index <= 0 || index === clean.length - 1) return ''
   return clean.slice(index + 1)
 }
 
-function shouldDisplayArtifact(name) {
+export function shouldDisplayArtifact(name) {
   const normalizedName = String(name || '').trim()
   if (!normalizedName || normalizedName === '产物文件') return false
   if (INTERMEDIATE_ARTIFACT_NAME_PATTERNS.some((pattern) => pattern.test(normalizedName))) return false

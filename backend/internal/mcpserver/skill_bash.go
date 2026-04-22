@@ -80,7 +80,9 @@ func runSkillBashLocal(in runSkillBashInput) (runSkillBashOutput, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "bash", "-lc", command)
+	cmd := exec.CommandContext(ctx, "bash", "-c",
+		fmt.Sprintf("SKILL_DIR=%s FRONTEND_TMP_DIR=%s FRONTEND_UPLOAD_DIR=%s %s",
+			skillDir, frontendTmpDir, frontendUploadDir, command))
 	cmd.Dir = skillDir
 	cmd.Env = append(os.Environ(),
 		"SKILL_DIR="+skillDir,

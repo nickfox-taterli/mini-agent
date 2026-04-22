@@ -1,4 +1,5 @@
 import { ref, computed } from 'vue'
+import { shouldDisplayArtifact } from './useChatStream.js'
 
 const STORAGE_KEY_SIDEBAR = 'agent-chat-sidebar-open'
 
@@ -70,7 +71,7 @@ export function useConversations(renderMarkdown, apiBase, authHeaders) {
         base.retrying = null
         base.toolCalls = toolCalls || []
         base.processTimeline = processTimeline || []
-        base.artifacts = artifacts || []
+        base.artifacts = (artifacts || []).filter((item) => shouldDisplayArtifact(item.name))
       }
       return { ...base }
     })

@@ -1076,6 +1076,21 @@ html {
   flex-shrink: 0;
 }
 
+/* ===== Meowing Indicator (Blue) ===== */
+
+.meowing-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  margin-bottom: 12px;
+  border-radius: 4px;
+  background: rgba(33, 150, 243, 0.15);
+  color: #2196F3;
+  font-size: 13px;
+  font-weight: 500;
+}
+
 /* ===== Tool Calling Indicator ===== */
 
 .tool-calling-indicator {
