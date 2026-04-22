@@ -437,7 +437,7 @@ html {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  overflow: hidden;
+  overflow: visible;
   position: relative;
   min-width: 0;
 }
@@ -1402,7 +1402,7 @@ html {
 /* ===== Fixed Bottom Bar ===== */
 
 .bottom-bar {
-  position: sticky;
+  position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
@@ -1410,7 +1410,7 @@ html {
   justify-content: center;
   padding: 16px 16px calc(20px + var(--safe-bottom));
   background: linear-gradient(180deg, rgba(30,30,30,0) 0%, rgba(30,30,30,0.95) 35%, #1E1E1E 60%);
-  z-index: 10;
+  z-index: 100;
   pointer-events: none;
 }
 
@@ -1709,7 +1709,7 @@ html {
 
   /* Page padding */
   .page {
-    padding: 12px 8px 180px;
+    padding: 12px 8px 100px;
   }
 
   .panel {

@@ -208,7 +208,7 @@ function submitAsk() {
           <span>正在非常努力干活...</span>
         </div>
         <!-- 喵喵喵提示: 既不排队重试也不努力干活时显示 -->
-        <div v-else-if="!msg.retrying && (!workingHard || !isLast || toolCalling)" class="meowing-indicator">
+        <div v-else-if="!msg.retrying && (!workingHard || !toolCalling)" class="meowing-indicator">
           <span>小午正在喵喵喵...</span>
         </div>
         <!-- 紧凑标签行: 思考 + 工具调用 -->
