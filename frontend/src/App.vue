@@ -52,11 +52,7 @@ async function handleLogin() {
 
 async function initAppData() {
   await loadConversations()
-  if (conversations.value.length === 0) {
-    createNewConversation(messages, expandedThinking)
-  } else {
-    loadLatestConversation(messages, expandedThinking)
-  }
+  createNewConversation(messages, expandedThinking)
   loadBackends()
   if (currentConversationId.value) {
     await syncConversationState(currentConversationId.value)
